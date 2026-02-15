@@ -27,18 +27,29 @@ type Account = {
   balance_updated_at?: string | null;
 };
 
-type TransactionAlertTemplate = {
+/** Recurring transaction pattern (B012) - replaces TransactionAlertTemplate */
+type RecurringTransaction = {
   id: number;
   bank_account_id: number;
-  expected_day_of_month: number;
+  name: string;
+  description_pattern: string | null;
+  frequency: string;
+  interval: number;
+  anchor_day: number;
   day_tolerance_before: number;
   day_tolerance_after: number;
-  expected_amount: string;
-  value_tolerance_below: string;
-  value_tolerance_above: string;
-  description_template: string | null;
-  source_transaction_id: number | null;
+  expected_amount: string | null;
+  amount_tolerance_below: string;
+  amount_tolerance_above: string;
+  alert_on_occurrence: boolean;
+  alert_on_missing: boolean;
+  missing_grace_days: number;
+  status: string;
+  detection_method: string;
+  confidence: number | null;
+  next_expected_date: string | null;
   created_at: string;
+  updated_at: string;
 };
 
 type Props = {
@@ -71,14 +82,11 @@ type Props = {
     actionDeleteAccount: string;
     accountTransactionAlerts: string;
     alertTemplateDay: string;
-    alertTemplateDayTolerance: string;
     alertTemplateAmount: string;
-    alertTemplateEdit: string;
     alertTemplateDelete: string;
-    createAlertDayToleranceBefore: string;
-    createAlertDayToleranceAfter: string;
-    createAlertValueToleranceBelow: string;
-    createAlertValueToleranceAbove: string;
+    deleteConfirm: string;
+    recurringAmountVaries: string;
+    alertTemplateDays: string;
     modalCancel: string;
     modalConfirm: string;
     confirmDeleteAccount: string;
@@ -159,7 +167,7 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
     accountLabel: string;
     alert_above_amount: string;
     alert_below_amount: string;
-    transactionAlerts: TransactionAlertTemplate[];
+    transactionAlerts: RecurringTransaction[];
   }>({
     open: false,
     accountId: null,
@@ -168,14 +176,8 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
     alert_below_amount: "-100",
     transactionAlerts: [],
   });
-  const [editingAlert, setEditingAlert] = useState<{
-    id: number;
-    day_tolerance_before: string;
-    day_tolerance_after: string;
-    value_tolerance_below: string;
-    value_tolerance_above: string;
-  } | null>(null);
   const [toast, setToast] = useState<{ text: string; type: "success" | "error" } | null>(null);
+  const [deleteAlertRecurringId, setDeleteAlertRecurringId] = useState<number | null>(null);
   const [deleteAccountModal, setDeleteAccountModal] = useState<{
     open: boolean;
     accountId: number | null;
@@ -248,7 +250,13 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key !== "Escape") return;
+      if (e.key !== "Escape" && e.key !== "Esc") return;
+      if (deleteAlertRecurringId != null) {
+        setDeleteAlertRecurringId(null);
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
       if (pdfImportReviewOpen) {
         setPdfImportReviewOpen(false);
         e.preventDefault();
@@ -264,9 +272,9 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
         e.preventDefault();
       }
     };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [pdfImportReviewOpen, pdfImportOpen, logoEditAccountId]);
+    document.documentElement.addEventListener("keydown", onKeyDown, true);
+    return () => document.documentElement.removeEventListener("keydown", onKeyDown, true);
+  }, [deleteAlertRecurringId, pdfImportReviewOpen, pdfImportOpen, logoEditAccountId]);
 
   useEffect(() => {
     if (!toast) return;
@@ -277,8 +285,7 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
   useEffect(() => {
     if (!alertsModal.open) return;
     const onEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setEditingAlert(null);
+      if (e.key === "Escape" || e.key === "Esc") {
         setAlertsModal({
           open: false,
           accountId: null,
@@ -291,8 +298,8 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
         e.stopPropagation();
       }
     };
-    document.addEventListener("keydown", onEscape, true);
-    return () => document.removeEventListener("keydown", onEscape, true);
+    document.documentElement.addEventListener("keydown", onEscape, true);
+    return () => document.documentElement.removeEventListener("keydown", onEscape, true);
   }, [alertsModal.open]);
 
   const filteredBanks = useMemo(() => {
@@ -441,8 +448,8 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
     }
   };
 
-  const loadTransactionAlerts = async (accountId: number): Promise<TransactionAlertTemplate[]> => {
-    const response = await fetch(`${apiBase}/api/accounts/${accountId}/alert-templates`, { headers });
+  const loadRecurringTransactions = async (accountId: number): Promise<RecurringTransaction[]> => {
+    const response = await fetch(`${apiBase}/api/accounts/${accountId}/recurring-transactions`, { headers });
     if (response.ok) {
       return await response.json();
     }
@@ -475,53 +482,17 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
     }
   };
 
-  const deleteTransactionAlert = async (templateId: number) => {
-    const response = await fetch(`${apiBase}/api/alert-templates/${templateId}`, {
+  const deleteRecurringTransaction = async (recurringId: number) => {
+    const response = await fetch(`${apiBase}/api/recurring-transactions/${recurringId}`, {
       method: "DELETE",
       headers,
     });
 
     if (response.ok) {
       if (alertsModal.accountId) {
-        const alerts = await loadTransactionAlerts(alertsModal.accountId);
-        setAlertsModal((prev) => ({ ...prev, transactionAlerts: alerts }));
+        const list = await loadRecurringTransactions(alertsModal.accountId);
+        setAlertsModal((prev) => ({ ...prev, transactionAlerts: list }));
       }
-      setToast({ text: t.profileSaved, type: "success" });
-    } else {
-      setToast({ text: t.profileSaveError, type: "error" });
-    }
-  };
-
-  const startEditingAlert = (alert: TransactionAlertTemplate) => {
-    setEditingAlert({
-      id: alert.id,
-      day_tolerance_before: String(alert.day_tolerance_before),
-      day_tolerance_after: String(alert.day_tolerance_after),
-      value_tolerance_below: alert.value_tolerance_below,
-      value_tolerance_above: alert.value_tolerance_above,
-    });
-  };
-
-  const saveTransactionAlert = async () => {
-    if (!editingAlert) return;
-
-    const response = await fetch(`${apiBase}/api/alert-templates/${editingAlert.id}`, {
-      method: "PATCH",
-      headers,
-      body: JSON.stringify({
-        day_tolerance_before: parseInt(editingAlert.day_tolerance_before),
-        day_tolerance_after: parseInt(editingAlert.day_tolerance_after),
-        value_tolerance_below: editingAlert.value_tolerance_below,
-        value_tolerance_above: editingAlert.value_tolerance_above,
-      }),
-    });
-
-    if (response.ok) {
-      if (alertsModal.accountId) {
-        const alerts = await loadTransactionAlerts(alertsModal.accountId);
-        setAlertsModal((prev) => ({ ...prev, transactionAlerts: alerts }));
-      }
-      setEditingAlert(null);
       setToast({ text: t.profileSaved, type: "success" });
     } else {
       setToast({ text: t.profileSaveError, type: "error" });
@@ -663,131 +634,31 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
                 <div className="mt-6 border-t border-slate-200 pt-4 dark:border-slate-700">
                   <h4 className="text-sm font-semibold mb-3">{t.accountTransactionAlerts}</h4>
                   <div className="grid gap-2">
-                    {alertsModal.transactionAlerts.map((alert) => (
+                    {alertsModal.transactionAlerts.map((rec) => (
                       <div
-                        key={alert.id}
+                        key={rec.id}
                         className="rounded border border-slate-200 p-2 text-xs dark:border-slate-700"
                       >
-                        {editingAlert && editingAlert.id === alert.id ? (
-                          <div className="grid gap-2">
+                        <div className="flex items-start gap-2">
+                          <div className="flex-1 min-w-0">
                             <div className="font-medium">
-                              {alert.description_template || t.accountTransactionAlerts}
+                              {rec.name || rec.description_pattern || t.accountTransactionAlerts}
                             </div>
-                            <div className="grid grid-cols-2 gap-2">
-                              <label className="grid gap-1">
-                                <span className="text-xs">{t.createAlertDayToleranceBefore}</span>
-                                <input
-                                  type="number"
-                                  className="input text-xs"
-                                  value={editingAlert.day_tolerance_before}
-                                  onChange={(e) =>
-                                    setEditingAlert((prev) =>
-                                      prev ? { ...prev, day_tolerance_before: e.target.value } : null
-                                    )
-                                  }
-                                />
-                              </label>
-                              <label className="grid gap-1">
-                                <span className="text-xs">{t.createAlertDayToleranceAfter}</span>
-                                <input
-                                  type="number"
-                                  className="input text-xs"
-                                  value={editingAlert.day_tolerance_after}
-                                  onChange={(e) =>
-                                    setEditingAlert((prev) =>
-                                      prev ? { ...prev, day_tolerance_after: e.target.value } : null
-                                    )
-                                  }
-                                />
-                              </label>
-                              <label className="grid gap-1">
-                                <span className="text-xs">{t.createAlertValueToleranceBelow}</span>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  className="input text-xs"
-                                  value={editingAlert.value_tolerance_below}
-                                  onChange={(e) =>
-                                    setEditingAlert((prev) =>
-                                      prev ? { ...prev, value_tolerance_below: e.target.value } : null
-                                    )
-                                  }
-                                />
-                              </label>
-                              <label className="grid gap-1">
-                                <span className="text-xs">{t.createAlertValueToleranceAbove}</span>
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  className="input text-xs"
-                                  value={editingAlert.value_tolerance_above}
-                                  onChange={(e) =>
-                                    setEditingAlert((prev) =>
-                                      prev ? { ...prev, value_tolerance_above: e.target.value } : null
-                                    )
-                                  }
-                                />
-                              </label>
-                            </div>
-                            <div className="flex justify-end gap-2">
-                              <button
-                                className="icon-button"
-                                type="button"
-                                title={t.modalCancel}
-                                aria-label={t.modalCancel}
-                                onClick={() => setEditingAlert(null)}
-                              >
-                                <i className="fa-solid fa-xmark"></i>
-                              </button>
-                              <button
-                                className="icon-button"
-                                type="button"
-                                title={t.modalConfirm}
-                                aria-label={t.modalConfirm}
-                                onClick={saveTransactionAlert}
-                              >
-                                <i className="fa-solid fa-check"></i>
-                              </button>
+                            <div className="text-slate-500 dark:text-slate-400">
+                              {t.alertTemplateDay}: {rec.anchor_day} (±{Math.max(rec.day_tolerance_before ?? 1, rec.day_tolerance_after ?? 1, rec.missing_grace_days ?? 1)} {t.alertTemplateDays}) · {t.alertTemplateAmount}: {(rec.expected_amount ?? "").trim() ? `${rec.expected_amount} (±${rec.amount_tolerance_below ?? rec.amount_tolerance_above ?? "0"})` : t.recurringAmountVaries}
+                              {rec.next_expected_date ? ` · Next: ${rec.next_expected_date}` : ""}
                             </div>
                           </div>
-                        ) : (
-                          <div className="flex items-start gap-2">
-                            <div className="flex-1">
-                              <div className="font-medium">
-                                {alert.description_template || t.accountTransactionAlerts}
-                              </div>
-                              <div className="text-slate-500 dark:text-slate-400">
-                                {t.alertTemplateDay}: {alert.expected_day_of_month}{" "}
-                                {t.alertTemplateDayTolerance
-                                  .replace("{before}", String(alert.day_tolerance_before))
-                                  .replace("{after}", String(alert.day_tolerance_after))}
-                              </div>
-                              <div className="text-slate-500 dark:text-slate-400">
-                                {t.alertTemplateAmount}: {alert.expected_amount} €
-                              </div>
-                            </div>
-                            <div className="flex gap-1">
-                              <button
-                                className="icon-button"
-                                type="button"
-                                title={t.alertTemplateEdit}
-                                aria-label={t.alertTemplateEdit}
-                                onClick={() => startEditingAlert(alert)}
-                              >
-                                <i className="fa-solid fa-pen"></i>
-                              </button>
-                              <button
-                                className="icon-button"
-                                type="button"
-                                title={t.alertTemplateDelete}
-                                aria-label={t.alertTemplateDelete}
-                                onClick={() => deleteTransactionAlert(alert.id)}
-                              >
-                                <i className="fa-solid fa-trash"></i>
-                              </button>
-                            </div>
-                          </div>
-                        )}
+                          <button
+                            className="icon-button shrink-0"
+                            type="button"
+                            title={t.alertTemplateDelete}
+                            aria-label={t.alertTemplateDelete}
+                            onClick={() => setDeleteAlertRecurringId(rec.id)}
+                          >
+                            <i className="fa-solid fa-trash"></i>
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -835,6 +706,75 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
                   <i className="fa-solid fa-check" />
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {deleteAlertRecurringId != null ? (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/50 p-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="onboarding-delete-alert-title"
+          tabIndex={-1}
+          onClick={() => setDeleteAlertRecurringId(null)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" || e.key === "Esc") {
+              e.preventDefault();
+              e.stopPropagation();
+              setDeleteAlertRecurringId(null);
+            }
+          }}
+        >
+          <div
+            className="card max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="onboarding-delete-alert-title" className="card-title">
+              {t.deleteConfirm}
+            </h3>
+            {(() => {
+              const rec = alertsModal.transactionAlerts.find((r) => r.id === deleteAlertRecurringId);
+              return rec ? (
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 truncate" title={rec.name || rec.description_pattern || ""}>
+                  {rec.name || rec.description_pattern || "—"}
+                </p>
+              ) : null;
+            })()}
+            <div className="flex justify-end gap-2 mt-6">
+              <button
+                type="button"
+                className="p-2 rounded-md border transition-colors"
+                style={{
+                  background: "var(--surface-hover)",
+                  borderColor: "var(--border)",
+                  color: "var(--text)",
+                }}
+                title={t.modalCancel}
+                aria-label={t.modalCancel}
+                onClick={() => setDeleteAlertRecurringId(null)}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+              <button
+                type="button"
+                className="p-2 rounded-md border transition-colors"
+                style={{
+                  background: "var(--error)",
+                  borderColor: "var(--error)",
+                  color: "white",
+                }}
+                title={t.modalConfirm}
+                aria-label={t.modalConfirm}
+                onClick={async () => {
+                  if (deleteAlertRecurringId == null) return;
+                  await deleteRecurringTransaction(deleteAlertRecurringId);
+                  setDeleteAlertRecurringId(null);
+                }}
+              >
+                <i className="fa-solid fa-check" />
+              </button>
             </div>
           </div>
         </div>
@@ -1635,7 +1575,7 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
                       title={t.actionEditAlerts}
                       aria-label={t.actionEditAlerts}
                       onClick={async () => {
-                        const alerts = await loadTransactionAlerts(account.id);
+                        const list = await loadRecurringTransactions(account.id);
                         setAlertsModal({
                           open: true,
                           accountId: account.id,
@@ -1652,7 +1592,7 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
                             account.alert_below_amount != null
                               ? String(account.alert_below_amount)
                               : "-100",
-                          transactionAlerts: alerts,
+                          transactionAlerts: list,
                         });
                       }}
                     >

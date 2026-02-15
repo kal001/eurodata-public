@@ -1,10 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
+import AdminDashboard from "./components/AdminDashboard";
 import AdminUsers from "./components/AdminUsers";
 import Audit from "./components/Audit";
 import Insights from "./components/Insights";
 import Onboarding from "./components/Onboarding";
 import PrivacyPolicy from "./components/PrivacyPolicy";
+import RecurringTransactions from "./components/RecurringTransactions";
 import Settings from "./components/Settings";
 import { getAccountColor } from "./utils/accountColors";
 
@@ -58,6 +60,7 @@ const translations = {
     heroTitle: "One app for all your bank accounts. Your data stays yours.",
     heroBody:
       "Connect banks and cards across Europe. We never see or sell your banking data—it is stored for your access only, encrypted, with bank-grade providers. Servers in Germany. Open-source client you can inspect on GitHub.",
+    heroAlerts: "Periodic alerts via Telegram and Slack. Weekly insights by email.",
     heroPrimaryCta: "Get started",
     heroSecondaryCta: "View roadmap",
     privacyHighlightsTitle: "Privacy by design",
@@ -67,6 +70,12 @@ const translations = {
     privacyHighlight4: "Bank authentication credentials are not stored or processed through our servers.",
     privacyHighlight5: "App servers are located in Europe (Germany).",
     privacyHighlight6: "The app client code is open-sourced on GitHub and can be inspected by everyone.",
+    landingStorageTitle: "Your data, your choice",
+    landingStorageSubtitle: "Choose cloud sync (default) or local-only. You can change this anytime in your profile.",
+    landingStorageCloudTitle: "Cloud sync",
+    landingStorageCloudBody: "Data synced to our servers. Automatic transaction updates and alerts enabled.",
+    landingStorageLocalTitle: "Local only",
+    landingStorageLocalBody: "No automatic sync or periodic alerts. Refresh manually when you use the app.",
     dashboardTitle: "Daily dashboards",
     dashboardBody:
       "Visualize income, expenses, and savings targets with AI-assisted categorization and smart alerts.",
@@ -77,12 +86,21 @@ const translations = {
       "Connect all your banks and cards with secure re-authentication. Transactions updated automatically, twice a day.",
     featureCategoriesTitle: "Smart categories",
     featureCategoriesBody:
-      "AI-assisted classification learns your preferences over time.",
+      "Assign a category to each transaction.\nAI-suggested categories. Learns over time.\nMultiple tags per transaction.",
     featureInsightsTitle: "Clear insights",
     featureInsightsBody:
       "Interactive charts highlight trends by period and account.",
     featureInsightsBodyBullets:
       "Interactive charts highlight trends by period and account.",
+    landingFeaturesSectionTitle: "Features",
+    featureCalendarTitle: "Calendar view",
+    featureCalendarBody: "View upcoming recurrent transactions in calendar view mode.",
+    featureNewBadge: "New",
+    landingFeaturesCategoriesAndTagsTitle: "Categories and Tags",
+    landingFeaturesAnalysisTitle: "Analysis",
+    featureBancosTitle: "Banks",
+    featureTagsBody:
+      "Assign multiple tags per transaction to filter and report. Use tags to associate transactions with users. Use tags to distinguish between personal or business transactions, for example.",
     footerCopyright: "© 2026 eurodata.app",
     footerPrivacy: "Privacy Policy",
     footerGithub: "GitHub",
@@ -106,7 +124,8 @@ const translations = {
     adminDeleteUser: "Delete user",
     adminEmails: "Emails",
     menuProfile: "My profile",
-    menuUsers: "User management",
+    menuUsers: "Users",
+    menuAdminDashboard: "Admin dashboard",
     menuSettings: "Settings",
     menuAudit: "Audit",
     menuLogin: "Login",
@@ -177,10 +196,32 @@ const translations = {
     profileTelegramUnlink: "Unlink",
     profileShowBalances: "Show account balances",
     profileShowBalancesHelp: "Display account balances on the transactions page",
+    profileAutoDetection: "Recurring auto-detection",
+    profileAutoDetectionHelp: "Automatically detect recurring transactions and suggest patterns (runs daily for cloud storage)",
     profileTelegramAlerts: "Telegram alerts",
     profileTelegramAlertsHelp: "Receive transaction and expected-payment alerts via Telegram",
+    profileSlackAlerts: "Slack alerts",
+    profileSlackAlertsHelp: "Receive transaction and expected-payment alerts in a Slack channel. Create an incoming webhook in your Slack workspace and paste the URL below.",
+    profileSlackWebhookUrl: "Slack webhook URL",
+    profileSlackWebhookUrlPlaceholder: "https://hooks.slack.com/services/...",
+    profileChannelsSection: "Channels",
+    profileAlertsSection: "Alerts",
+    profileSlackWebhookHelpPopup: "1. Go to Slack API page: Visit https://api.slack.com/apps\n\n2. Create or select an app: Click \"Create New App\", choose \"From scratch\", give it a name and select your workspace.\n\n3. Enable Incoming Webhooks: In your app settings, click \"Incoming Webhooks\" in the left sidebar and toggle the switch to \"On\".\n\n4. Add webhook to channel: Click \"Add New Webhook to Workspace\" at the bottom, select the channel you want to post to, then click \"Allow\".\n\n5. Copy the webhook URL: Your webhook URL will appear — it looks like https://hooks.slack.com/services/...",
+    profileSlackTestButton: "Send test message",
+    profileSlackTestSent: "Test message sent to Slack.",
+    profileSlackTestError: "Failed to send test message. Check webhook URL and try again.",
+    profileTabUser: "User",
+    profileTabChannels: "Channels",
+    profileTabAlerts: "Alerts",
+    profileTabStorage: "Storage",
+    profileTabApiTokens: "API Tokens",
     profileWeeklyEmails: "Weekly emails",
     profileWeeklyEmailsHelp: "Receive the weekly Insights report by email (Sunday 08:00 UTC)",
+    profileStorageMode: "Data storage",
+    profileStorageModeCloud: "Cloud sync",
+    profileStorageModeLocal: "Local only",
+    profileStorageModeCloudHelp: "Your data is synced to our servers. Automatic transaction updates and alerts are enabled.",
+    profileStorageModeLocalHelp: "Automatic transaction fetch and periodic alerts are disabled. You can still refresh manually when you use the app.",
     balanceUpdated: "Updated",
     balanceUnavailable: "Balance unavailable",
     refreshBalances: "Refresh balances and transactions",
@@ -407,8 +448,8 @@ const translations = {
     transactionComment: "Comment",
     transactionCommentAdd: "Add comment",
     transactionCommentPlaceholder: "Add a comment...",
-    createAlertFromTransaction: "Create alert",
-    createAlertTitle: "Create expected transaction alert",
+    createAlertFromTransaction: "Recurring",
+    createAlertTitle: "Set up recurring transaction",
     createAlertDayToleranceBefore: "Day tolerance before",
     createAlertDayToleranceAfter: "Day tolerance after",
     createAlertValueToleranceBelow: "Value tolerance below",
@@ -416,6 +457,7 @@ const translations = {
     alertTemplateDescription: "Description",
     alertTemplateDay: "Day",
     alertTemplateDayTolerance: "({before} before / {after} after)",
+    alertTemplateDays: "days",
     alertTemplateAmount: "Amount",
     alertTemplateEdit: "Edit",
     alertTemplateDelete: "Delete",
@@ -438,6 +480,35 @@ const translations = {
     audit_action_create_requisition: "Bank link request created",
     audit_action_get_requisition: "Link status consulted",
     audit_action_get_account_details: "Account details obtained",
+    metricsTitle: "Admin dashboard",
+    metricsUsers: "Users",
+    metricsBanking: "Banking",
+    metricsRecurring: "Recurring transactions",
+    metricsEngagement: "Engagement",
+    metricsTotalUsers: "Total users",
+    metricsActiveUsers7d: "Active users (7 days)",
+    metricsActiveUsers30d: "Active users (30 days)",
+    metricsOnboardingCompleted: "Onboarding completed",
+    metricsUsersWithAccount: "Users with at least one account",
+    metricsTotalAccounts: "Total bank accounts",
+    metricsTotalConnections: "Total bank connections",
+    metricsTotalTransactions: "Total transactions",
+    metricsAvgAccountsPerUser: "Avg accounts per user",
+    metricsAvgTransactionsPerUser: "Avg transactions per user",
+    metricsTotalPatterns: "Total recurring patterns",
+    metricsPatternsActive: "Patterns (active)",
+    metricsPatternsSuggested: "Patterns (suggested)",
+    metricsPatternsPaused: "Patterns (paused)",
+    metricsPatternsAutoDetected: "Auto-detected",
+    metricsPatternsManual: "Manual",
+    metricsPatternsMigrated: "Migrated",
+    metricsUsersWithPatterns: "Users with patterns",
+    metricsAvgPatternsPerUser: "Avg patterns per user (with patterns)",
+    metricsOccurrencesMatched: "Matched occurrences",
+    metricsTelegramEnabled: "Users with Telegram alerts",
+    metricsWeeklyEmailsEnabled: "Users with weekly emails",
+    metricsLoading: "Loading metrics…",
+    metricsError: "Failed to load metrics",
     accountTransactionAlertsEmpty: "No expected transaction alerts. Create one from a transaction (bell icon in the transactions list).",
     helpTitle: "Help",
     helpClose: "Close",
@@ -457,8 +528,8 @@ const translations = {
     helpTxExportDesc: "Download transactions as a CSV file for Excel.",
     helpTxCategorySelect: "Category (per row)",
     helpTxCategorySelectDesc: "Assign or change the category for this transaction.",
-    helpTxAlertIcon: "Create expected transaction alert",
-    helpTxAlertIconDesc: "Create an alert that notifies you when a similar transaction should occur (e.g. monthly payment).",
+    helpTxAlertIcon: "Recurring",
+    helpTxAlertIconDesc: "Set up a recurring transaction so we notify you when it occurs or when it is missing (e.g. monthly payment).",
     helpTxCommentIcon: "Comment",
     helpTxCommentIconDesc: "Add or edit a note for this transaction.",
     helpTxDeleteIcon: "Delete",
@@ -538,6 +609,90 @@ const translations = {
     navTransactions: "Transactions",
     navAccounts: "Accounts",
     navInsights: "Insights",
+    navRecurring: "Recurring",
+    recurringTitle: "Recurring transactions",
+    recurringSubtitle: "Track and manage expected recurring payments. Run detection to find suggestions from your history.",
+    recurringInitialOfferTitle: "Find recurring patterns",
+    recurringInitialOfferBody: "We can analyze your last 12 months of transactions to suggest recurring payments (subscriptions, rent, utilities). Optional; processing runs on our servers.",
+    recurringInitialOfferAnalyze: "Analyze my transactions",
+    recurringInitialOfferSkip: "Skip for now",
+    recurringEmptyGuidance: "Create a pattern manually from a transaction (e.g. Netflix, rent, utilities) or run detection above. More history helps.",
+    recurringFindSuggestions: "Find suggestions",
+    recurringFinding: "Analysing…",
+    recurringNoSuggestions: "No new suggestions.",
+    recurringReviewSuggestions: "Review suggestions",
+    recurringSuggestionsCount: "{n} suggestion(s) to review",
+    recurringConfirm: "Confirm",
+    recurringDismiss: "Dismiss",
+    recurringSkip: "Skip",
+    recurringEditThenConfirm: "Edit then confirm",
+    recurringProgressOf: "{i} of {n}",
+    filterAccount: "Account",
+    filterAccountAll: "All accounts",
+    filterStatus: "Status",
+    filterStatusAll: "All",
+    filterStatusActive: "Active",
+    filterStatusPaused: "Paused",
+    filterStatusSuggested: "Suggested",
+    sortBy: "Sort by",
+    sortNextDate: "Next date",
+    sortName: "Name",
+    sortFrequency: "Frequency",
+    sortAmount: "Amount",
+    sortConfidence: "Confidence",
+    searchPlaceholder: "Search by name…",
+    recurringEmpty: "No recurring transactions. Add one from a transaction or run detection.",
+    recurringNext: "Next",
+    recurringAmount: "Amount",
+    recurringAmountVaries: "Varies",
+    recurringFrequency: "Frequency",
+    recurringFrequencyWeekly: "Weekly",
+    recurringFrequencyBiweekly: "Biweekly",
+    recurringFrequencyMonthly: "Monthly",
+    recurringFrequencyQuarterly: "Quarterly",
+    recurringFrequencyYearly: "Yearly",
+    recurringStatusActive: "Active",
+    recurringStatusPaused: "Paused",
+    recurringStatusSuggested: "Suggested",
+    recurringStatusDismissed: "Dismissed",
+    recurringStatusArchived: "Archived",
+    recurringCreateManual: "Add recurring",
+    recurringEdit: "Edit",
+    recurringPause: "Pause",
+    recurringResume: "Resume",
+    recurringDelete: "Delete",
+    recurringViewList: "List",
+    recurringViewCalendar: "Calendar",
+    calendarToday: "Today",
+    calendarMonthTitle: "Month",
+    calendarSummaryTransactions: "{n} expected transaction(s)",
+    calendarSummaryAmount: "Total",
+    calendarUpcoming: "Upcoming",
+    countdownToday: "Today",
+    countdownTomorrow: "Tomorrow",
+    countdownInNDays: "In {n} days",
+    countdownDaysAgo: "{n} days ago",
+    modalClose: "Close",
+    detailName: "Name",
+    detailDescriptionPattern: "Description pattern",
+    detailFrequency: "Frequency",
+    detailInterval: "Interval",
+    detailAnchorDay: "Anchor day",
+    detailDayTolerance: "Day tolerance (± days)",
+    detailExpectedAmount: "Expected amount",
+    detailNominalAmount: "Nominal amount (for totals)",
+    detailAmountTolerance: "Amount tolerance (±)",
+    detailAlertOnOccurrence: "Alert when it occurs",
+    detailAlertOnMissing: "Alert when missing",
+    detailMissingGraceDays: "Missing grace (days)",
+    createRecurringTitle: "Add recurring transaction",
+    createRecurringSuccess: "Recurring transaction created.",
+    createRecurringError: "Something went wrong.",
+    deleteConfirm: "Remove this recurring transaction?",
+    deleteSuccess: "Removed.",
+    confirmSuccess: "Suggestion confirmed.",
+    confirmOnlySuggestedError: "Only suggestions can be confirmed. This item may have been dismissed.",
+    dismissSuccess: "Suggestion dismissed.",
     incomeVsExpenses: "Income vs Expenses",
     monthlyTrend: "Monthly Trend",
     topCategories: "Top Categories",
@@ -612,6 +767,7 @@ const translations = {
     heroTitle: "Uma app para todas as suas contas bancárias. Os seus dados ficam seus.",
     heroBody:
       "Ligue bancos e cartões em toda a Europa. Nunca vemos nem vendemos os seus dados bancários—ficam armazenados só para si, encriptados, com fornecedores de nível bancário. Servidores na Alemanha. Cliente em código aberto que pode inspecionar no GitHub.",
+    heroAlerts: "Alertas periódicos por Telegram e Slack. Análises semanais por email.",
     heroPrimaryCta: "Começar",
     heroSecondaryCta: "Ver roadmap",
     privacyHighlightsTitle: "Privacidade por design",
@@ -621,6 +777,12 @@ const translations = {
     privacyHighlight4: "As credenciais de autenticação bancária não são armazenadas nem processadas nos nossos servidores.",
     privacyHighlight5: "Os servidores da aplicação estão na Europa (Alemanha).",
     privacyHighlight6: "O código cliente da app é open-source no GitHub e pode ser inspecionado por todos.",
+    landingStorageTitle: "Os seus dados, a sua escolha",
+    landingStorageSubtitle: "Escolha sincronização na nuvem (predefinido) ou apenas local. Pode alterar no perfil quando quiser.",
+    landingStorageCloudTitle: "Sincronização na nuvem",
+    landingStorageCloudBody: "Dados sincronizados nos nossos servidores. Atualizações automáticas de movimentos e alertas ativos.",
+    landingStorageLocalTitle: "Apenas local",
+    landingStorageLocalBody: "Sem sincronização automática nem alertas periódicos. Atualize manualmente quando usar a aplicação.",
     dashboardTitle: "Painéis diários",
     dashboardBody:
       "Visualize receitas, despesas e metas de poupança com categorização assistida por IA e alertas inteligentes.",
@@ -631,12 +793,21 @@ const translations = {
       "Ligue todas as contas em bancos e cartões em 30 países da Europa, com reautenticação segura. Transações actualizadas automaticamente, duas vezes por dia.",
     featureCategoriesTitle: "Categorias e etiquetas",
     featureCategoriesBody:
-      "Categorias por transação com aprendizagem com IA. Melhora com o tempo. Múltiplas etiquetas para cada transação.",
+      "Atribua categorias a cada transação.\nSugestão de categorias feita por IA. Aprendizagem com o tempo.\nMúltiplas etiquetas para cada transação.",
     featureInsightsTitle: "Análises claras",
     featureInsightsBody:
       "Gráficos interativos destacam tendências por período e conta. Relatórios semanais e possibilidade de exportação de relatórios para pdf.",
     featureInsightsBodyBullets:
       "Gráficos interativos destacam tendências por período e conta. Relatórios semanais e possibilidade de exportação de relatórios para pdf.",
+    landingFeaturesSectionTitle: "Funcionalidades",
+    featureCalendarTitle: "Vista de calendário",
+    featureCalendarBody: "Veja as transações recorrentes futuras em modo de calendário.",
+    featureNewBadge: "Novo",
+    landingFeaturesCategoriesAndTagsTitle: "Categorias e etiquetas",
+    landingFeaturesAnalysisTitle: "Análises",
+    featureBancosTitle: "Bancos",
+    featureTagsBody:
+      "Atribua várias etiquetas por transação para filtrar e reportar.\nUse etiquetas para associar transações com utilizadores.\nUse etiquetas para distinguir entre transações pessoais ou de empresa, por exemplo.",
     footerCopyright: "© 2026 eurodata.app",
     footerPrivacy: "Política de Privacidade",
     footerGithub: "GitHub",
@@ -660,7 +831,8 @@ const translations = {
     adminDeleteUser: "Remover utilizador",
     adminEmails: "Emails",
     menuProfile: "O meu perfil",
-    menuUsers: "Gestão de utilizadores",
+    menuUsers: "Utilizadores",
+    menuAdminDashboard: "Painel de administração",
     menuSettings: "Definições",
     menuAudit: "Auditoria",
     menuLogin: "Entrar",
@@ -672,6 +844,35 @@ const translations = {
     aboutSupport: "Suporte",
     aboutChangelog: "Ver registo de alterações",
     aboutClose: "Fechar",
+    metricsTitle: "Painel de administração",
+    metricsUsers: "Utilizadores",
+    metricsBanking: "Contas bancárias",
+    metricsRecurring: "Transações recorrentes",
+    metricsEngagement: "Participação",
+    metricsTotalUsers: "Total de utilizadores",
+    metricsActiveUsers7d: "Utilizadores ativos (7 dias)",
+    metricsActiveUsers30d: "Utilizadores ativos (30 dias)",
+    metricsOnboardingCompleted: "Onboarding concluído",
+    metricsUsersWithAccount: "Utilizadores com pelo menos uma conta",
+    metricsTotalAccounts: "Total de contas bancárias",
+    metricsTotalConnections: "Total de ligações bancárias",
+    metricsTotalTransactions: "Total de transações",
+    metricsAvgAccountsPerUser: "Média de contas por utilizador",
+    metricsAvgTransactionsPerUser: "Média de transações por utilizador",
+    metricsTotalPatterns: "Total de padrões recorrentes",
+    metricsPatternsActive: "Padrões (ativos)",
+    metricsPatternsSuggested: "Padrões (sugeridos)",
+    metricsPatternsPaused: "Padrões (pausados)",
+    metricsPatternsAutoDetected: "Detetados automaticamente",
+    metricsPatternsManual: "Manuais",
+    metricsPatternsMigrated: "Migrados",
+    metricsUsersWithPatterns: "Utilizadores com padrões",
+    metricsAvgPatternsPerUser: "Média de padrões por utilizador (com padrões)",
+    metricsOccurrencesMatched: "Ocorrências correspondidas",
+    metricsTelegramEnabled: "Utilizadores com alertas Telegram",
+    metricsWeeklyEmailsEnabled: "Utilizadores com e-mails semanais",
+    metricsLoading: "A carregar métricas…",
+    metricsError: "Erro ao carregar métricas",
     privacyTitle: "Política de Privacidade",
     privacyBack: "Voltar",
     privacyLastUpdated: "Última atualização: fevereiro de 2026",
@@ -731,10 +932,32 @@ const translations = {
     profileTelegramUnlink: "Desligar",
     profileShowBalances: "Mostrar saldos das contas",
     profileShowBalancesHelp: "Mostrar saldos das contas na página de transações",
+    profileAutoDetection: "Deteção automática de recorrências",
+    profileAutoDetectionHelp: "Detetar transações recorrentes e sugerir padrões automaticamente (executado diariamente com armazenamento na nuvem)",
     profileTelegramAlerts: "Alertas Telegram",
     profileTelegramAlertsHelp: "Receber alertas de transações e pagamentos esperados via Telegram",
+    profileSlackAlerts: "Alertas Slack",
+    profileSlackAlertsHelp: "Receber alertas de transações e pagamentos esperados num canal Slack. Crie um incoming webhook no seu espaço Slack e cole o URL abaixo.",
+    profileSlackWebhookUrl: "URL do webhook Slack",
+    profileSlackWebhookUrlPlaceholder: "https://hooks.slack.com/services/...",
+    profileChannelsSection: "Canais",
+    profileAlertsSection: "Alertas",
+    profileSlackWebhookHelpPopup: "1. Ir à página da API Slack: Visite https://api.slack.com/apps\n\n2. Criar ou selecionar uma app: Clique em \"Create New App\", escolha \"From scratch\", dê um nome e selecione o seu espaço.\n\n3. Ativar Incoming Webhooks: Nas definições da app, clique em \"Incoming Webhooks\" na barra lateral e ative a opção \"On\".\n\n4. Adicionar webhook ao canal: Clique em \"Add New Webhook to Workspace\" no fundo, selecione o canal onde quer publicar e clique em \"Allow\".\n\n5. Copiar o URL do webhook: O URL do webhook aparecerá — tem o formato https://hooks.slack.com/services/...",
+    profileSlackTestButton: "Enviar mensagem de teste",
+    profileSlackTestSent: "Mensagem de teste enviada para o Slack.",
+    profileSlackTestError: "Falha ao enviar mensagem de teste. Verifique o URL do webhook e tente novamente.",
+    profileTabUser: "Utilizador",
+    profileTabChannels: "Canais",
+    profileTabAlerts: "Alertas",
+    profileTabStorage: "Armazenamento",
+    profileTabApiTokens: "Tokens de API",
     profileWeeklyEmails: "Emails semanais",
     profileWeeklyEmailsHelp: "Receber o relatório semanal de Análises por email (domingo 08:00 UTC)",
+    profileStorageMode: "Armazenamento de dados",
+    profileStorageModeCloud: "Sincronização na nuvem",
+    profileStorageModeLocal: "Apenas local",
+    profileStorageModeCloudHelp: "Os seus dados são sincronizados nos nossos servidores. Atualizações automáticas de movimentos e alertas estão ativas.",
+    profileStorageModeLocalHelp: "A atualização automática de movimentos e os alertas periódicos estão desativados. Pode atualizar manualmente quando usar a aplicação.",
     balanceUpdated: "Atualizado",
     balanceUnavailable: "Saldo indisponível",
     refreshBalances: "Atualizar saldos e movimentos",
@@ -961,8 +1184,8 @@ const translations = {
     transactionComment: "Comentário",
     transactionCommentAdd: "Adicionar comentário",
     transactionCommentPlaceholder: "Adicione um comentário...",
-    createAlertFromTransaction: "Criar alerta",
-    createAlertTitle: "Criar alerta de transação esperada",
+    createAlertFromTransaction: "Recorrente",
+    createAlertTitle: "Configurar transação recorrente",
     createAlertDayToleranceBefore: "Tolerância dia antes",
     createAlertDayToleranceAfter: "Tolerância dia depois",
     createAlertValueToleranceBelow: "Tolerância valor abaixo",
@@ -970,6 +1193,7 @@ const translations = {
     alertTemplateDescription: "Descrição",
     alertTemplateDay: "Dia",
     alertTemplateDayTolerance: "({before} antes / {after} depois)",
+    alertTemplateDays: "dias",
     alertTemplateAmount: "Valor",
     alertTemplateEdit: "Editar",
     alertTemplateDelete: "Eliminar",
@@ -1011,8 +1235,8 @@ const translations = {
     helpTxExportDesc: "Descarregar transações em ficheiro CSV para Excel.",
     helpTxCategorySelect: "Categoria (por linha)",
     helpTxCategorySelectDesc: "Atribuir ou alterar a categoria desta transação.",
-    helpTxAlertIcon: "Criar alerta de transação esperada",
-    helpTxAlertIconDesc: "Criar um alerta que o notifica quando uma transação semelhante deve ocorrer (ex.: pagamento mensal).",
+    helpTxAlertIcon: "Recorrente",
+    helpTxAlertIconDesc: "Configurar uma transação recorrente para ser notificado quando ocorrer ou quando faltar (ex.: pagamento mensal).",
     helpTxCommentIcon: "Comentário",
     helpTxCommentIconDesc: "Adicionar ou editar uma nota para esta transação.",
     helpTxDeleteIcon: "Eliminar",
@@ -1092,6 +1316,89 @@ const translations = {
     navTransactions: "Transações",
     navAccounts: "Contas",
     navInsights: "Análises",
+    navRecurring: "Recorrentes",
+    recurringTitle: "Transações recorrentes",
+    recurringSubtitle: "Gerir pagamentos recorrentes. Execute a deteção para sugerir padrões a partir do histórico.",
+    recurringInitialOfferTitle: "Encontrar padrões recorrentes",
+    recurringInitialOfferBody: "Podemos analisar os últimos 12 meses de transações para sugerir pagamentos recorrentes (subscrições, renda, utilities). Opcional; o processamento é feito nos nossos servidores.",
+    recurringInitialOfferAnalyze: "Analisar as minhas transações",
+    recurringInitialOfferSkip: "Agora não",
+    recurringEmptyGuidance: "Crie um padrão manualmente a partir de uma transação (ex.: Netflix, renda, contas) ou execute a deteção acima. Mais histórico ajuda.",
+    recurringFindSuggestions: "Encontrar sugestões",
+    recurringFinding: "A analisar…",
+    recurringNoSuggestions: "Nenhuma sugestão nova.",
+    recurringReviewSuggestions: "Rever sugestões",
+    recurringSuggestionsCount: "{n} sugestão(ões) por rever",
+    recurringConfirm: "Confirmar",
+    recurringDismiss: "Rejeitar",
+    recurringSkip: "Saltar",
+    recurringEditThenConfirm: "Editar e confirmar",
+    recurringProgressOf: "{i} de {n}",
+    filterAccount: "Conta",
+    filterAccountAll: "Todas",
+    filterStatus: "Estado",
+    filterStatusAll: "Todos",
+    filterStatusActive: "Ativo",
+    filterStatusPaused: "Pausado",
+    filterStatusSuggested: "Sugerido",
+    sortBy: "Ordenar por",
+    sortNextDate: "Próxima data",
+    sortName: "Nome",
+    sortFrequency: "Frequência",
+    sortAmount: "Valor",
+    sortConfidence: "Confiança",
+    searchPlaceholder: "Pesquisar por nome…",
+    recurringEmpty: "Sem transações recorrentes. Adicione a partir de uma transação ou execute a deteção.",
+    recurringNext: "Próxima",
+    recurringAmount: "Valor",
+    recurringAmountVaries: "Variável",
+    recurringFrequency: "Frequência",
+    recurringFrequencyWeekly: "Semanal",
+    recurringFrequencyBiweekly: "Quinzenal",
+    recurringFrequencyMonthly: "Mensal",
+    recurringFrequencyQuarterly: "Trimestral",
+    recurringFrequencyYearly: "Anual",
+    recurringStatusActive: "Ativo",
+    recurringStatusPaused: "Pausado",
+    recurringStatusSuggested: "Sugerido",
+    recurringStatusDismissed: "Rejeitado",
+    recurringStatusArchived: "Arquivado",
+    recurringCreateManual: "Adicionar recorrente",
+    recurringEdit: "Editar",
+    recurringPause: "Pausar",
+    recurringResume: "Retomar",
+    recurringDelete: "Eliminar",
+    recurringViewList: "Lista",
+    recurringViewCalendar: "Calendário",
+    calendarToday: "Hoje",
+    calendarMonthTitle: "Mês",
+    calendarSummaryTransactions: "{n} transação(ões) esperada(s)",
+    calendarSummaryAmount: "Total",
+    calendarUpcoming: "Próximos",
+    countdownToday: "Hoje",
+    countdownTomorrow: "Amanhã",
+    countdownInNDays: "Em {n} dias",
+    countdownDaysAgo: "Há {n} dias",
+    detailName: "Nome",
+    detailDescriptionPattern: "Padrão da descrição",
+    detailFrequency: "Frequência",
+    detailInterval: "Intervalo",
+    detailAnchorDay: "Dia âncora",
+    detailDayTolerance: "Tolerância dia (± dias)",
+    detailExpectedAmount: "Valor esperado",
+    detailNominalAmount: "Valor nominal (para totais)",
+    detailAmountTolerance: "Tolerância valor (±)",
+    detailAlertOnOccurrence: "Avisar quando ocorrer",
+    detailAlertOnMissing: "Avisar quando faltar",
+    detailMissingGraceDays: "Dias de tolerância (falta)",
+    createRecurringTitle: "Adicionar transação recorrente",
+    createRecurringSuccess: "Transação recorrente criada.",
+    createRecurringError: "Ocorreu um erro.",
+    deleteConfirm: "Remover esta transação recorrente?",
+    deleteSuccess: "Removido.",
+    confirmSuccess: "Sugestão confirmada.",
+    confirmOnlySuggestedError: "Só sugestões podem ser confirmadas. Este item pode ter sido rejeitado.",
+    dismissSuccess: "Sugestão rejeitada.",
     incomeVsExpenses: "Receitas vs Despesas",
     monthlyTrend: "Tendência Mensal",
     topCategories: "Principais Categorias",
@@ -1166,6 +1473,7 @@ const translations = {
     heroTitle: "Una app para todas tus cuentas bancarias. Tus datos siguen siendo tuyos.",
     heroBody:
       "Conecta bancos y tarjetas en toda Europa. Nunca vemos ni vendemos tus datos bancarios—se almacenan solo para tu acceso, cifrados, con proveedores de nivel bancario. Servidores en Alemania. Cliente en código abierto que puedes inspeccionar en GitHub.",
+    heroAlerts: "Alertas periódicos por Telegram y Slack. Análisis semanales por email.",
     heroPrimaryCta: "Empezar",
     heroSecondaryCta: "Ver roadmap",
     privacyHighlightsTitle: "Privacidad por diseño",
@@ -1175,6 +1483,12 @@ const translations = {
     privacyHighlight4: "Las credenciales de autenticación bancaria no se almacenan ni procesan en nuestros servidores.",
     privacyHighlight5: "Los servidores de la aplicación están en Europa (Alemania).",
     privacyHighlight6: "El código cliente de la app es open-source en GitHub y puede ser inspeccionado por todos.",
+    landingStorageTitle: "Tus datos, tu elección",
+    landingStorageSubtitle: "Elige sincronización en la nube (por defecto) o solo local. Puedes cambiarlo en tu perfil cuando quieras.",
+    landingStorageCloudTitle: "Sincronización en la nube",
+    landingStorageCloudBody: "Datos sincronizados en nuestros servidores. Actualizaciones automáticas de transacciones y alertas activas.",
+    landingStorageLocalTitle: "Solo local",
+    landingStorageLocalBody: "Sin sincronización automática ni alertas periódicas. Actualiza manualmente al usar la aplicación.",
     dashboardTitle: "Paneles diarios",
     dashboardBody:
       "Visualiza ingresos, gastos y metas de ahorro con categorización asistida por IA y alertas inteligentes.",
@@ -1185,12 +1499,21 @@ const translations = {
       "Conecte todos sus bancos y tarjetas con reautenticación segura. Transacciones actualizadas automáticamente, dos veces al día.",
     featureCategoriesTitle: "Categorías inteligentes",
     featureCategoriesBody:
-      "La clasificación asistida por IA aprende tus preferencias con el tiempo.",
+      "Asigne una categoría a cada transacción.\nSugerencias de categorías por IA. Aprendizaje con el tiempo.\nMúltiples etiquetas por transacción.",
     featureInsightsTitle: "Insights claros",
     featureInsightsBody:
       "Gráficos interactivos destacan tendencias por período y cuenta.",
     featureInsightsBodyBullets:
       "Gráficos interactivos destacan tendencias por período y cuenta.",
+    landingFeaturesSectionTitle: "Funcionalidades",
+    featureCalendarTitle: "Vista de calendario",
+    landingFeaturesCategoriesAndTagsTitle: "Categorías y etiquetas",
+    landingFeaturesAnalysisTitle: "Análisis",
+    featureBancosTitle: "Bancos",
+    featureTagsBody:
+      "Asigne varias etiquetas por transacción para filtrar e informar. Use etiquetas para asociar transacciones con usuarios. Use etiquetas para distinguir entre transacciones personales o de empresa, por ejemplo.",
+    featureCalendarBody: "Vea las transacciones recurrentes futuras en modo calendario.",
+    featureNewBadge: "Nuevo",
     footerCopyright: "© 2026 eurodata.app",
     footerPrivacy: "Política de Privacidad",
     footerGithub: "GitHub",
@@ -1214,7 +1537,8 @@ const translations = {
     adminDeleteUser: "Eliminar usuario",
     adminEmails: "Emails",
     menuProfile: "Mi perfil",
-    menuUsers: "Gestión de usuarios",
+    menuUsers: "Usuarios",
+    menuAdminDashboard: "Panel de administración",
     menuSettings: "Ajustes",
     menuAudit: "Auditoría",
     menuLogin: "Iniciar sesión",
@@ -1226,6 +1550,35 @@ const translations = {
     aboutSupport: "Soporte",
     aboutChangelog: "Ver registro de cambios",
     aboutClose: "Cerrar",
+    metricsTitle: "Panel de administración",
+    metricsUsers: "Usuarios",
+    metricsBanking: "Banca",
+    metricsRecurring: "Transacciones recurrentes",
+    metricsEngagement: "Participación",
+    metricsTotalUsers: "Total de usuarios",
+    metricsActiveUsers7d: "Usuarios activos (7 días)",
+    metricsActiveUsers30d: "Usuarios activos (30 días)",
+    metricsOnboardingCompleted: "Onboarding completado",
+    metricsUsersWithAccount: "Usuarios con al menos una cuenta",
+    metricsTotalAccounts: "Total de cuentas bancarias",
+    metricsTotalConnections: "Total de conexiones bancarias",
+    metricsTotalTransactions: "Total de transacciones",
+    metricsAvgAccountsPerUser: "Media de cuentas por usuario",
+    metricsAvgTransactionsPerUser: "Media de transacciones por usuario",
+    metricsTotalPatterns: "Total de patrones recurrentes",
+    metricsPatternsActive: "Patrones (activos)",
+    metricsPatternsSuggested: "Patrones (sugeridos)",
+    metricsPatternsPaused: "Patrones (pausados)",
+    metricsPatternsAutoDetected: "Auto-detectados",
+    metricsPatternsManual: "Manuales",
+    metricsPatternsMigrated: "Migrados",
+    metricsUsersWithPatterns: "Usuarios con patrones",
+    metricsAvgPatternsPerUser: "Media de patrones por usuario (con patrones)",
+    metricsOccurrencesMatched: "Ocurrencias emparejadas",
+    metricsTelegramEnabled: "Usuarios con alertas Telegram",
+    metricsWeeklyEmailsEnabled: "Usuarios con correos semanales",
+    metricsLoading: "Cargando métricas…",
+    metricsError: "Error al cargar métricas",
     privacyTitle: "Política de Privacidad",
     privacyBack: "Volver",
     privacyLastUpdated: "Última actualización: febrero de 2026",
@@ -1285,10 +1638,32 @@ const translations = {
     profileTelegramUnlink: "Desvincular",
     profileShowBalances: "Mostrar saldos de cuentas",
     profileShowBalancesHelp: "Mostrar saldos de cuentas en la página de transacciones",
+    profileAutoDetection: "Detección automática de recurrentes",
+    profileAutoDetectionHelp: "Detectar transacciones recurrentes y sugerir patrones automáticamente (se ejecuta diariamente con almacenamiento en la nube)",
     profileTelegramAlerts: "Alertas de Telegram",
     profileTelegramAlertsHelp: "Recibir alertas de transacciones y pagos esperados por Telegram",
+    profileSlackAlerts: "Alertas Slack",
+    profileSlackAlertsHelp: "Recibir alertas de transacciones y pagos esperados en un canal de Slack. Cree un incoming webhook en su espacio de Slack y pegue la URL abajo.",
+    profileSlackWebhookUrl: "URL del webhook de Slack",
+    profileSlackWebhookUrlPlaceholder: "https://hooks.slack.com/services/...",
+    profileChannelsSection: "Canales",
+    profileAlertsSection: "Alertas",
+    profileSlackWebhookHelpPopup: "1. Ir a la página de la API de Slack: Visite https://api.slack.com/apps\n\n2. Crear o seleccionar una app: Haga clic en \"Create New App\", elija \"From scratch\", póngale nombre y seleccione su espacio.\n\n3. Activar Incoming Webhooks: En la configuración de la app, haga clic en \"Incoming Webhooks\" en la barra lateral y active la opción \"On\".\n\n4. Añadir webhook al canal: Haga clic en \"Add New Webhook to Workspace\" al final, seleccione el canal donde quiere publicar y haga clic en \"Allow\".\n\n5. Copiar la URL del webhook: Verá la URL del webhook — tiene el formato https://hooks.slack.com/services/...",
+    profileSlackTestButton: "Enviar mensaje de prueba",
+    profileSlackTestSent: "Mensaje de prueba enviado a Slack.",
+    profileSlackTestError: "Error al enviar mensaje de prueba. Compruebe la URL del webhook e inténtelo de nuevo.",
+    profileTabUser: "Usuario",
+    profileTabChannels: "Canales",
+    profileTabAlerts: "Alertas",
+    profileTabStorage: "Almacenamiento",
+    profileTabApiTokens: "Tokens de API",
     profileWeeklyEmails: "Emails semanales",
     profileWeeklyEmailsHelp: "Recibir el informe semanal de Análisis por email (domingo 08:00 UTC)",
+    profileStorageMode: "Almacenamiento de datos",
+    profileStorageModeCloud: "Sincronización en la nube",
+    profileStorageModeLocal: "Solo local",
+    profileStorageModeCloudHelp: "Sus datos se sincronizan en nuestros servidores. Las actualizaciones automáticas de transacciones y alertas están activas.",
+    profileStorageModeLocalHelp: "La actualización automática de transacciones y las alertas periódicas están desactivadas. Puede actualizar manualmente al usar la aplicación.",
     balanceUpdated: "Actualizado",
     balanceUnavailable: "Saldo no disponible",
     refreshBalances: "Actualizar saldos y movimientos",
@@ -1515,8 +1890,8 @@ const translations = {
     transactionComment: "Comentario",
     transactionCommentAdd: "Añadir comentario",
     transactionCommentPlaceholder: "Añade un comentario...",
-    createAlertFromTransaction: "Crear alerta",
-    createAlertTitle: "Crear alerta de transacción esperada",
+    createAlertFromTransaction: "Recurrente",
+    createAlertTitle: "Configurar transacción recurrente",
     createAlertDayToleranceBefore: "Tolerancia día antes",
     createAlertDayToleranceAfter: "Tolerancia día después",
     createAlertValueToleranceBelow: "Tolerancia valor por debajo",
@@ -1524,6 +1899,7 @@ const translations = {
     alertTemplateDescription: "Descripción",
     alertTemplateDay: "Día",
     alertTemplateDayTolerance: "({before} antes / {after} después)",
+    alertTemplateDays: "días",
     alertTemplateAmount: "Importe",
     alertTemplateEdit: "Editar",
     alertTemplateDelete: "Eliminar",
@@ -1565,8 +1941,8 @@ const translations = {
     helpTxExportDesc: "Descargar transacciones en CSV para Excel.",
     helpTxCategorySelect: "Categoría (por fila)",
     helpTxCategorySelectDesc: "Asignar o cambiar la categoría de esta transacción.",
-    helpTxAlertIcon: "Crear alerta de transacción esperada",
-    helpTxAlertIconDesc: "Crear una alerta que le avisa cuando debe ocurrir una transacción similar (ej. pago mensual).",
+    helpTxAlertIcon: "Recurrente",
+    helpTxAlertIconDesc: "Configurar una transacción recurrente para recibir avisos cuando ocurra o cuando falte (ej. pago mensual).",
     helpTxCommentIcon: "Comentario",
     helpTxCommentIconDesc: "Añadir o editar una nota para esta transacción.",
     helpTxDeleteIcon: "Eliminar",
@@ -1646,6 +2022,89 @@ const translations = {
     navTransactions: "Transacciones",
     navAccounts: "Cuentas",
     navInsights: "Análisis",
+    navRecurring: "Recurrentes",
+    recurringTitle: "Transacciones recurrentes",
+    recurringSubtitle: "Gestionar pagos recurrentes. Ejecute la detección para sugerir patrones.",
+    recurringInitialOfferTitle: "Encontrar patrones recurrentes",
+    recurringInitialOfferBody: "Podemos analizar los últimos 12 meses de transacciones para sugerir pagos recurrentes (suscripciones, alquiler, suministros). Opcional; el proceso se realiza en nuestros servidores.",
+    recurringInitialOfferAnalyze: "Analizar mis transacciones",
+    recurringInitialOfferSkip: "Ahora no",
+    recurringEmptyGuidance: "Cree un patrón manualmente desde una transacción (ej. Netflix, alquiler, suministros) o ejecute la detección. Más historial ayuda.",
+    recurringFindSuggestions: "Buscar sugerencias",
+    recurringFinding: "Analizando…",
+    recurringNoSuggestions: "Ninguna sugerencia nueva.",
+    recurringReviewSuggestions: "Revisar sugerencias",
+    recurringSuggestionsCount: "{n} sugerencia(s) por revisar",
+    recurringConfirm: "Confirmar",
+    recurringDismiss: "Rechazar",
+    recurringSkip: "Omitir",
+    recurringEditThenConfirm: "Editar y confirmar",
+    recurringProgressOf: "{i} de {n}",
+    filterAccount: "Cuenta",
+    filterAccountAll: "Todas",
+    filterStatus: "Estado",
+    filterStatusAll: "Todos",
+    filterStatusActive: "Activo",
+    filterStatusPaused: "Pausado",
+    filterStatusSuggested: "Sugerido",
+    sortBy: "Ordenar por",
+    sortNextDate: "Próxima fecha",
+    sortName: "Nombre",
+    sortFrequency: "Frecuencia",
+    sortAmount: "Importe",
+    sortConfidence: "Confianza",
+    searchPlaceholder: "Buscar por nombre…",
+    recurringEmpty: "Sin transacciones recurrentes. Añada desde una transacción o ejecute la detección.",
+    recurringNext: "Próxima",
+    recurringAmount: "Importe",
+    recurringAmountVaries: "Variable",
+    recurringFrequency: "Frecuencia",
+    recurringFrequencyWeekly: "Semanal",
+    recurringFrequencyBiweekly: "Quincenal",
+    recurringFrequencyMonthly: "Mensual",
+    recurringFrequencyQuarterly: "Trimestral",
+    recurringFrequencyYearly: "Anual",
+    recurringStatusActive: "Activo",
+    recurringStatusPaused: "Pausado",
+    recurringStatusSuggested: "Sugerido",
+    recurringStatusDismissed: "Rechazado",
+    recurringStatusArchived: "Archivado",
+    recurringCreateManual: "Añadir recurrente",
+    recurringEdit: "Editar",
+    recurringPause: "Pausar",
+    recurringResume: "Reanudar",
+    recurringDelete: "Eliminar",
+    recurringViewList: "Lista",
+    recurringViewCalendar: "Calendario",
+    calendarToday: "Hoy",
+    calendarMonthTitle: "Mes",
+    calendarSummaryTransactions: "{n} transacción(es) esperada(s)",
+    calendarSummaryAmount: "Total",
+    calendarUpcoming: "Próximos",
+    countdownToday: "Hoy",
+    countdownTomorrow: "Mañana",
+    countdownInNDays: "En {n} días",
+    countdownDaysAgo: "Hace {n} días",
+    detailName: "Nombre",
+    detailDescriptionPattern: "Patrón de descripción",
+    detailFrequency: "Frecuencia",
+    detailInterval: "Intervalo",
+    detailAnchorDay: "Día ancla",
+    detailDayTolerance: "Tolerancia día (± días)",
+    detailExpectedAmount: "Importe esperado",
+    detailNominalAmount: "Importe nominal (para totales)",
+    detailAmountTolerance: "Tolerancia importe (±)",
+    detailAlertOnOccurrence: "Avisar cuando ocurra",
+    detailAlertOnMissing: "Avisar cuando falte",
+    detailMissingGraceDays: "Días de gracia (falta)",
+    createRecurringTitle: "Añadir transacción recurrente",
+    createRecurringSuccess: "Transacción recurrente creada.",
+    createRecurringError: "Algo falló.",
+    deleteConfirm: "¿Eliminar esta transacción recurrente?",
+    deleteSuccess: "Eliminado.",
+    confirmSuccess: "Sugerencia confirmada.",
+    confirmOnlySuggestedError: "Solo se pueden confirmar sugerencias. Este elemento puede haber sido rechazado.",
+    dismissSuccess: "Sugerencia rechazada.",
     incomeVsExpenses: "Ingresos vs Gastos",
     monthlyTrend: "Tendencia Mensual",
     topCategories: "Principales Categorías",
@@ -1720,6 +2179,7 @@ const translations = {
     heroTitle: "Une app pour tous vos comptes bancaires. Vos données restent les vôtres.",
     heroBody:
       "Connectez banques et cartes dans toute l'Europe. Nous ne voyons ni ne vendons jamais vos données bancaires—elles sont stockées pour votre seul accès, chiffrées, avec des fournisseurs de niveau bancaire. Serveurs en Allemagne. Client open-source que vous pouvez inspecter sur GitHub.",
+    heroAlerts: "Alertes périodiques par Telegram et Slack. Analyses hebdomadaires par email.",
     heroPrimaryCta: "Commencer",
     heroSecondaryCta: "Voir la roadmap",
     privacyHighlightsTitle: "Confidentialité par design",
@@ -1729,6 +2189,12 @@ const translations = {
     privacyHighlight4: "Les identifiants d'authentification bancaire ne sont pas stockés ni traités sur nos serveurs.",
     privacyHighlight5: "Les serveurs de l'application sont situés en Europe (Allemagne).",
     privacyHighlight6: "Le code client de l'app est open-source sur GitHub et peut être inspecté par tous.",
+    landingStorageTitle: "Vos données, votre choix",
+    landingStorageSubtitle: "Choisissez la synchronisation cloud (par défaut) ou local uniquement. Vous pouvez changer dans votre profil à tout moment.",
+    landingStorageCloudTitle: "Synchronisation cloud",
+    landingStorageCloudBody: "Données synchronisées sur nos serveurs. Mises à jour automatiques des transactions et alertes activées.",
+    landingStorageLocalTitle: "Local uniquement",
+    landingStorageLocalBody: "Pas de synchronisation automatique ni d'alertes périodiques. Actualisez manuellement lorsque vous utilisez l'application.",
     dashboardTitle: "Tableaux de bord quotidiens",
     dashboardBody:
       "Visualisez revenus, dépenses et objectifs d’épargne avec une catégorisation assistée par IA et des alertes intelligentes.",
@@ -1739,12 +2205,21 @@ const translations = {
       "Connectez toutes vos banques et cartes avec une réauthentification sécurisée. Transactions mises à jour automatiquement, deux fois par jour.",
     featureCategoriesTitle: "Catégories intelligentes",
     featureCategoriesBody:
-      "La classification assistée par IA apprend vos préférences au fil du temps.",
+      "Attribuez une catégorie à chaque transaction.\nSuggestions de catégories par IA. Apprentissage dans le temps.\nPlusieurs étiquettes par transaction.",
     featureInsightsTitle: "Insights clairs",
     featureInsightsBody:
       "Des graphiques interactifs mettent en évidence les tendances par période et par compte.",
     featureInsightsBodyBullets:
       "Graphiques interactifs mettent en évidence les tendances par période et par compte.",
+    landingFeaturesSectionTitle: "Fonctionnalités",
+    featureCalendarTitle: "Vue calendrier",
+    featureCalendarBody: "Visualisez les prochaines transactions récurrentes en mode calendrier.",
+    featureNewBadge: "Nouveau",
+    landingFeaturesCategoriesAndTagsTitle: "Catégories et étiquettes",
+    landingFeaturesAnalysisTitle: "Analyse",
+    featureBancosTitle: "Banques",
+    featureTagsBody:
+      "Attribuez plusieurs étiquettes par transaction pour filtrer et rapporter. Utilisez les étiquettes pour associer les transactions aux utilisateurs. Utilisez les étiquettes pour distinguer les transactions personnelles ou professionnelles, par exemple.",
     footerCopyright: "© 2026 eurodata.app",
     footerPrivacy: "Politique de confidentialité",
     footerGithub: "GitHub",
@@ -1768,7 +2243,8 @@ const translations = {
     adminDeleteUser: "Supprimer l’utilisateur",
     adminEmails: "Emails",
     menuProfile: "Mon profil",
-    menuUsers: "Gestion des utilisateurs",
+    menuUsers: "Utilisateurs",
+    menuAdminDashboard: "Tableau de bord admin",
     menuSettings: "Paramètres",
     menuAudit: "Audit",
     menuLogin: "Se connecter",
@@ -1780,6 +2256,35 @@ const translations = {
     aboutSupport: "Support",
     aboutChangelog: "Voir le journal des modifications",
     aboutClose: "Fermer",
+    metricsTitle: "Tableau de bord admin",
+    metricsUsers: "Utilisateurs",
+    metricsBanking: "Banque",
+    metricsRecurring: "Transactions récurrentes",
+    metricsEngagement: "Engagement",
+    metricsTotalUsers: "Total utilisateurs",
+    metricsActiveUsers7d: "Utilisateurs actifs (7 jours)",
+    metricsActiveUsers30d: "Utilisateurs actifs (30 jours)",
+    metricsOnboardingCompleted: "Onboarding terminé",
+    metricsUsersWithAccount: "Utilisateurs avec au moins un compte",
+    metricsTotalAccounts: "Total des comptes bancaires",
+    metricsTotalConnections: "Total des connexions bancaires",
+    metricsTotalTransactions: "Total des transactions",
+    metricsAvgAccountsPerUser: "Moy. comptes par utilisateur",
+    metricsAvgTransactionsPerUser: "Moy. transactions par utilisateur",
+    metricsTotalPatterns: "Total des modèles récurrents",
+    metricsPatternsActive: "Modèles (actifs)",
+    metricsPatternsSuggested: "Modèles (suggérés)",
+    metricsPatternsPaused: "Modèles (en pause)",
+    metricsPatternsAutoDetected: "Détectés automatiquement",
+    metricsPatternsManual: "Manuels",
+    metricsPatternsMigrated: "Migrés",
+    metricsUsersWithPatterns: "Utilisateurs avec modèles",
+    metricsAvgPatternsPerUser: "Moy. modèles par utilisateur (avec modèles)",
+    metricsOccurrencesMatched: "Occurrences associées",
+    metricsTelegramEnabled: "Utilisateurs avec alertes Telegram",
+    metricsWeeklyEmailsEnabled: "Utilisateurs avec e-mails hebdo",
+    metricsLoading: "Chargement des métriques…",
+    metricsError: "Échec du chargement des métriques",
     privacyTitle: "Politique de confidentialité",
     privacyBack: "Retour",
     privacyLastUpdated: "Dernière mise à jour : février 2026",
@@ -1839,10 +2344,32 @@ const translations = {
     profileTelegramUnlink: "Délier",
     profileShowBalances: "Afficher les soldes des comptes",
     profileShowBalancesHelp: "Afficher les soldes des comptes sur la page des transactions",
+    profileAutoDetection: "Détection automatique des récurrentes",
+    profileAutoDetectionHelp: "Détecter automatiquement les transactions récurrentes et suggérer des modèles (exécuté quotidiennement avec stockage cloud)",
     profileTelegramAlerts: "Alertes Telegram",
     profileTelegramAlertsHelp: "Recevoir les alertes de transactions et paiements attendus par Telegram",
+    profileSlackAlerts: "Alertes Slack",
+    profileSlackAlertsHelp: "Recevoir les alertes de transactions et paiements attendus dans un canal Slack. Créez un webhook entrant dans votre espace Slack et collez l'URL ci-dessous.",
+    profileSlackWebhookUrl: "URL du webhook Slack",
+    profileSlackWebhookUrlPlaceholder: "https://hooks.slack.com/services/...",
+    profileChannelsSection: "Canaux",
+    profileAlertsSection: "Alertes",
+    profileSlackWebhookHelpPopup: "1. Aller sur la page API Slack : Visitez https://api.slack.com/apps\n\n2. Créer ou sélectionner une app : Cliquez sur \"Create New App\", choisissez \"From scratch\", donnez un nom et sélectionnez votre espace.\n\n3. Activer Incoming Webhooks : Dans les paramètres de l'app, cliquez sur \"Incoming Webhooks\" dans la barre latérale et activez l'option \"On\".\n\n4. Ajouter le webhook au canal : Cliquez sur \"Add New Webhook to Workspace\" en bas, sélectionnez le canal où publier puis \"Allow\".\n\n5. Copier l'URL du webhook : L'URL du webhook s'affichera — du type https://hooks.slack.com/services/...",
+    profileSlackTestButton: "Envoyer un message de test",
+    profileSlackTestSent: "Message de test envoyé sur Slack.",
+    profileSlackTestError: "Échec de l'envoi du message de test. Vérifiez l'URL du webhook et réessayez.",
+    profileTabUser: "Utilisateur",
+    profileTabChannels: "Canaux",
+    profileTabAlerts: "Alertes",
+    profileTabStorage: "Stockage",
+    profileTabApiTokens: "Tokens API",
     profileWeeklyEmails: "Emails hebdomadaires",
     profileWeeklyEmailsHelp: "Recevoir le rapport hebdomadaire Analyses par email (dimanche 08:00 UTC)",
+    profileStorageMode: "Stockage des données",
+    profileStorageModeCloud: "Synchronisation cloud",
+    profileStorageModeLocal: "Local uniquement",
+    profileStorageModeCloudHelp: "Vos données sont synchronisées sur nos serveurs. Les mises à jour automatiques des transactions et les alertes sont activées.",
+    profileStorageModeLocalHelp: "La récupération automatique des transactions et les alertes périodiques sont désactivées. Vous pouvez actualiser manuellement lorsque vous utilisez l'application.",
     balanceUpdated: "Mis à jour",
     balanceUnavailable: "Solde non disponible",
     refreshBalances: "Actualiser soldes et mouvements",
@@ -2069,8 +2596,8 @@ const translations = {
     transactionComment: "Commentaire",
     transactionCommentAdd: "Ajouter un commentaire",
     transactionCommentPlaceholder: "Ajoutez un commentaire...",
-    createAlertFromTransaction: "Créer une alerte",
-    createAlertTitle: "Créer une alerte de transaction attendue",
+    createAlertFromTransaction: "Récurrent",
+    createAlertTitle: "Configurer la transaction récurrente",
     createAlertDayToleranceBefore: "Tolérance jour avant",
     createAlertDayToleranceAfter: "Tolérance jour après",
     createAlertValueToleranceBelow: "Tolérance montant en dessous",
@@ -2078,6 +2605,7 @@ const translations = {
     alertTemplateDescription: "Description",
     alertTemplateDay: "Jour",
     alertTemplateDayTolerance: "({before} avant / {after} après)",
+    alertTemplateDays: "jours",
     alertTemplateAmount: "Montant",
     alertTemplateEdit: "Modifier",
     alertTemplateDelete: "Supprimer",
@@ -2119,8 +2647,8 @@ const translations = {
     helpTxExportDesc: "Télécharger les transactions en fichier CSV pour Excel.",
     helpTxCategorySelect: "Catégorie (par ligne)",
     helpTxCategorySelectDesc: "Attribuer ou modifier la catégorie de cette transaction.",
-    helpTxAlertIcon: "Créer une alerte de transaction attendue",
-    helpTxAlertIconDesc: "Créer une alerte qui vous prévient quand une transaction similaire doit survenir (ex. paiement mensuel).",
+    helpTxAlertIcon: "Récurrent",
+    helpTxAlertIconDesc: "Configurer une transaction récurrente pour être notifié quand elle a lieu ou quand elle manque (ex. paiement mensuel).",
     helpTxCommentIcon: "Commentaire",
     helpTxCommentIconDesc: "Ajouter ou modifier une note pour cette transaction.",
     helpTxDeleteIcon: "Supprimer",
@@ -2200,6 +2728,89 @@ const translations = {
     navTransactions: "Transactions",
     navAccounts: "Comptes",
     navInsights: "Analyses",
+    navRecurring: "Récurrentes",
+    recurringTitle: "Transactions récurrentes",
+    recurringSubtitle: "Suivre et gérer les paiements récurrents. Lancez la détection pour des suggestions.",
+    recurringInitialOfferTitle: "Trouver des paiements récurrents",
+    recurringInitialOfferBody: "Nous pouvons analyser vos 12 derniers mois de transactions pour suggérer des paiements récurrents (abonnements, loyer, factures). Optionnel ; le traitement est fait sur nos serveurs.",
+    recurringInitialOfferAnalyze: "Analyser mes transactions",
+    recurringInitialOfferSkip: "Plus tard",
+    recurringEmptyGuidance: "Créez un modèle manuellement depuis une transaction (ex. Netflix, loyer, factures) ou lancez la détection. Plus d’historique aide.",
+    recurringFindSuggestions: "Trouver des suggestions",
+    recurringFinding: "Analyse en cours…",
+    recurringNoSuggestions: "Aucune nouvelle suggestion.",
+    recurringReviewSuggestions: "Revoir les suggestions",
+    recurringSuggestionsCount: "{n} suggestion(s) à revoir",
+    recurringConfirm: "Confirmer",
+    recurringDismiss: "Rejeter",
+    recurringSkip: "Passer",
+    recurringEditThenConfirm: "Modifier puis confirmer",
+    recurringProgressOf: "{i} sur {n}",
+    filterAccount: "Compte",
+    filterAccountAll: "Tous",
+    filterStatus: "État",
+    filterStatusAll: "Tous",
+    filterStatusActive: "Actif",
+    filterStatusPaused: "En pause",
+    filterStatusSuggested: "Suggéré",
+    sortBy: "Trier par",
+    sortNextDate: "Prochaine date",
+    sortName: "Nom",
+    sortFrequency: "Fréquence",
+    sortAmount: "Montant",
+    sortConfidence: "Confiance",
+    searchPlaceholder: "Rechercher par nom…",
+    recurringEmpty: "Aucune transaction récurrente. Ajoutez-en depuis une transaction ou lancez la détection.",
+    recurringNext: "Prochaine",
+    recurringAmount: "Montant",
+    recurringAmountVaries: "Variable",
+    recurringFrequency: "Fréquence",
+    recurringFrequencyWeekly: "Hebdomadaire",
+    recurringFrequencyBiweekly: "Bimensuel",
+    recurringFrequencyMonthly: "Mensuel",
+    recurringFrequencyQuarterly: "Trimestriel",
+    recurringFrequencyYearly: "Annuel",
+    recurringStatusActive: "Actif",
+    recurringStatusPaused: "En pause",
+    recurringStatusSuggested: "Suggéré",
+    recurringStatusDismissed: "Rejeté",
+    recurringStatusArchived: "Archivé",
+    recurringCreateManual: "Ajouter une récurrente",
+    recurringEdit: "Modifier",
+    recurringPause: "Pause",
+    recurringResume: "Reprendre",
+    recurringDelete: "Supprimer",
+    recurringViewList: "Liste",
+    recurringViewCalendar: "Calendrier",
+    calendarToday: "Aujourd'hui",
+    calendarMonthTitle: "Mois",
+    calendarSummaryTransactions: "{n} transaction(s) attendue(s)",
+    calendarSummaryAmount: "Total",
+    calendarUpcoming: "À venir",
+    countdownToday: "Aujourd'hui",
+    countdownTomorrow: "Demain",
+    countdownInNDays: "Dans {n} jours",
+    countdownDaysAgo: "Il y a {n} jours",
+    detailName: "Nom",
+    detailDescriptionPattern: "Modèle de description",
+    detailFrequency: "Fréquence",
+    detailInterval: "Intervalle",
+    detailAnchorDay: "Jour d'ancrage",
+    detailDayTolerance: "Tolérance jour (± jours)",
+    detailExpectedAmount: "Montant attendu",
+    detailNominalAmount: "Montant nominal (pour totaux)",
+    detailAmountTolerance: "Tolérance montant (±)",
+    detailAlertOnOccurrence: "Alerte à l'occurrence",
+    detailAlertOnMissing: "Alerte si manquant",
+    detailMissingGraceDays: "Jours de grâce (manquant)",
+    createRecurringTitle: "Ajouter une transaction récurrente",
+    createRecurringSuccess: "Transaction récurrente créée.",
+    createRecurringError: "Une erreur s'est produite.",
+    deleteConfirm: "Supprimer cette transaction récurrente ?",
+    deleteSuccess: "Supprimé.",
+    confirmSuccess: "Suggestion confirmée.",
+    confirmOnlySuggestedError: "Seules les suggestions peuvent être confirmées. Cet élément a peut-être été rejeté.",
+    dismissSuccess: "Suggestion rejetée.",
     incomeVsExpenses: "Revenus vs Dépenses",
     monthlyTrend: "Tendance Mensuelle",
     topCategories: "Principales Catégories",
@@ -2369,10 +2980,15 @@ function App() {
   const [signupRequestSuccess, setSignupRequestSuccess] = useState(false);
   const [signupRequestError, setSignupRequestError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<
-    "profile" | "users" | "settings" | "audit" | "home" | "transactions" | "accounts" | "insights" | "privacy"
+    "profile" | "users" | "settings" | "audit" | "adminDashboard" | "home" | "transactions" | "accounts" | "insights" | "recurring" | "privacy"
   >("home");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showToTopButton, setShowToTopButton] = useState(false);
+  const [landingCarouselIndex, setLandingCarouselIndex] = useState(0);
+  const [featurePreviewSrc, setFeaturePreviewSrc] = useState<string | null>(null);
+  const featurePreviewCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const featurePreviewOpenTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const FEATURE_PREVIEW_HOVER_MS = 1500;
   const {
     loginWithRedirect,
     logout,
@@ -2395,8 +3011,13 @@ function App() {
     country?: string | null;
     telegram_chat_id?: string | null;
     show_account_balances?: boolean;
+    auto_detection_enabled?: boolean;
     telegram_alerts_enabled?: boolean;
+    slack_webhook_url?: string | null;
+    slack_alerts_enabled?: boolean;
     weekly_emails_enabled?: boolean;
+    storage_mode?: "cloud" | "local";
+    recurring_initial_detection_run_at?: string | null;
     transactions_filter_preferences?: {
       account_ids?: number[] | null;
       category_ids?: number[] | null;
@@ -2474,8 +3095,12 @@ function App() {
     country: "",
     telegram_chat_id: "",
     show_account_balances: true,
+    auto_detection_enabled: true,
     telegram_alerts_enabled: true,
+    slack_webhook_url: "",
+    slack_alerts_enabled: false,
     weekly_emails_enabled: true,
+    storage_mode: "cloud" as "cloud" | "local",
   });
   const [telegramLinkCode, setTelegramLinkCode] = useState<{
     code: string;
@@ -2490,7 +3115,29 @@ function App() {
   const [apiTokenCreateName, setApiTokenCreateName] = useState("");
   const [apiTokenCreateSubmitting, setApiTokenCreateSubmitting] = useState(false);
   const [apiTokenCopyFeedback, setApiTokenCopyFeedback] = useState(false);
+  const [slackHelpOpen, setSlackHelpOpen] = useState(false);
+  const [slackTestLoading, setSlackTestLoading] = useState(false);
+  const slackHelpRef = useRef<HTMLDivElement>(null);
+  type ProfileTabId = "user" | "channels" | "alerts" | "storage" | "tokens";
+  const [profileTab, setProfileTab] = useState<ProfileTabId>("user");
+  useEffect(() => {
+    if (!slackHelpOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setSlackHelpOpen(false);
+    };
+    const onClick = (e: MouseEvent) => {
+      if (slackHelpRef.current && !slackHelpRef.current.contains(e.target as Node)) setSlackHelpOpen(false);
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("click", onClick, true);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("click", onClick, true);
+    };
+  }, [slackHelpOpen]);
   const [apiTokenDeleteConfirm, setApiTokenDeleteConfirm] = useState<number | null>(null);
+  const apiTokenCreateModalOpenRef = useRef(false);
+  apiTokenCreateModalOpenRef.current = apiTokenCreateModal !== "closed";
   const [accountNameModal, setAccountNameModal] = useState<{
     open: boolean;
     accountId: number | null;
@@ -2511,20 +3158,30 @@ function App() {
   });
   const accountAlertsModalOpenRef = useRef(false);
   accountAlertsModalOpenRef.current = accountAlertsModal.open;
-  const [accountAlertTemplates, setAccountAlertTemplates] = useState<
-    {
-      id: number;
-      bank_account_id: number;
-      expected_day_of_month: number;
-      day_tolerance_before: number;
-      day_tolerance_after: number;
-      expected_amount: string;
-      value_tolerance_below: string;
-      value_tolerance_above: string;
-      description_template: string | null;
-      created_at: string;
-    }[]
-  >([]);
+  const accountAlertsOverlayRef = useRef<HTMLDivElement>(null);
+  const [accountAlertsDeleteRecurringId, setAccountAlertsDeleteRecurringId] = useState<number | null>(null);
+  const accountAlertsDeleteRecurringIdRef = useRef<number | null>(null);
+  accountAlertsDeleteRecurringIdRef.current = accountAlertsDeleteRecurringId;
+  const accountAlertsDeleteOverlayRef = useRef<HTMLDivElement>(null);
+  type RecurringTransactionItem = {
+    id: number;
+    bank_account_id: number;
+    name: string;
+    description_pattern: string | null;
+    frequency: string;
+    anchor_day: number;
+    day_tolerance_before: number;
+    day_tolerance_after: number;
+    expected_amount: string | null;
+    amount_tolerance_below: string;
+    amount_tolerance_above: string;
+    alert_on_occurrence: boolean;
+    alert_on_missing: boolean;
+    missing_grace_days: number;
+    next_expected_date: string | null;
+    created_at: string;
+  };
+  const [recurringTransactions, setRecurringTransactions] = useState<RecurringTransactionItem[]>([]);
   const [createAlertModal, setCreateAlertModal] = useState<{
     open: boolean;
     txId: number;
@@ -2548,7 +3205,6 @@ function App() {
     value_tolerance_below: "1",
     value_tolerance_above: "1",
   });
-  const [editAlertTemplateId, setEditAlertTemplateId] = useState<number | null>(null);
   const [deleteAccountModal, setDeleteAccountModal] = useState<{
     open: boolean;
     connectionId: number | null;
@@ -2678,7 +3334,7 @@ function App() {
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
-  const PERSISTED_SECTIONS = ["transactions", "accounts", "insights"] as const;
+  const PERSISTED_SECTIONS = ["transactions", "accounts", "insights", "recurring"] as const;
   const ACTIVE_SECTION_KEY = "pf_active_section";
 
   // Restore persisted section when authenticated; otherwise default to transactions
@@ -2756,18 +3412,27 @@ function App() {
   useEffect(() => {
     if (!aboutModalOpen) return;
     let cancelled = false;
-    fetch("/version.txt")
-      .then((res) => (res.ok ? res.text() : Promise.reject(new Error("Not ok"))))
-      .then((text) => {
-        if (!cancelled) setAboutVersion((text ?? "").trim() || "—");
+    const versionUrl = apiBaseNorm ? `${apiBaseNorm}/api/version` : "/api/version";
+    fetch(versionUrl)
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("Not ok"))))
+      .then((data) => {
+        if (!cancelled && data?.version) setAboutVersion(String(data.version).trim() || "—");
       })
       .catch(() => {
-        if (!cancelled) setAboutVersion("—");
+        if (cancelled) return;
+        fetch("/version.txt")
+          .then((res) => (res.ok ? res.text() : Promise.reject(new Error("Not ok"))))
+          .then((text) => {
+            if (!cancelled) setAboutVersion((text ?? "").trim() || "—");
+          })
+          .catch(() => {
+            if (!cancelled) setAboutVersion("—");
+          });
       });
     return () => {
       cancelled = true;
     };
-  }, [aboutModalOpen]);
+  }, [aboutModalOpen, apiBaseNorm]);
 
   useEffect(() => {
     const loadProfile = async () => {
@@ -3117,6 +3782,21 @@ function App() {
     if (activeSection === "profile" && apiToken) loadApiTokens();
   }, [activeSection, apiToken, loadApiTokens]);
 
+  // Refetch profile when opening Profile section so storage_mode and other prefs are up to date
+  useEffect(() => {
+    if (activeSection !== "profile" || !apiToken || !apiBase) return;
+    let cancelled = false;
+    fetch(`${apiBase}/api/me`, { headers: { Authorization: `Bearer ${apiToken}` } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data) setProfile(data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [activeSection, apiToken, apiBase]);
+
   useEffect(() => {
     loadRecentTransactions();
   }, [loadRecentTransactions]);
@@ -3273,6 +3953,34 @@ function App() {
   }, [helpModalContext]);
 
   useEffect(() => {
+    if (!featurePreviewSrc) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "Esc") {
+        setFeaturePreviewSrc(null);
+        e.preventDefault();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [featurePreviewSrc]);
+
+  useEffect(() => {
+    if (!aboutModalOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "Esc") setAboutModalOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [aboutModalOpen]);
+
+  useEffect(() => {
+    return () => {
+      if (featurePreviewCloseTimeoutRef.current) clearTimeout(featurePreviewCloseTimeoutRef.current);
+      if (featurePreviewOpenTimeoutRef.current) clearTimeout(featurePreviewOpenTimeoutRef.current);
+    };
+  }, []);
+
+  useEffect(() => {
     if (bankAccounts.length === 0) {
       setTransactionsAccountFilter([]);
       return;
@@ -3402,21 +4110,37 @@ function App() {
     return () => window.clearTimeout(timer);
   }, [toast]);
 
+  const isEscape = (e: KeyboardEvent) => e.key === "Escape" || e.key === "Esc";
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape") return;
+      if (!isEscape(event)) return;
+      if (accountAlertsDeleteRecurringIdRef.current != null) {
+        setAccountAlertsDeleteRecurringId(null);
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      if (apiTokenCreateModalOpenRef.current) {
+        setApiTokenCreateModal("closed");
+        setApiTokenCreateName("");
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       if (accountNameModal.open) {
         setAccountNameModal({ open: false, accountId: null, value: "" });
         event.preventDefault();
+        event.stopPropagation();
         return;
       }
       if (exportModal.open) {
         setExportModal((prev) => ({ ...prev, open: false }));
         event.preventDefault();
+        event.stopPropagation();
         return;
       }
       if (accountAlertsModalOpenRef.current) {
-        setEditAlertTemplateId(null);
         setAccountAlertsModal({
           open: false,
           accountId: null,
@@ -3425,48 +4149,57 @@ function App() {
           alert_below_amount: "-100",
         });
         event.preventDefault();
+        event.stopPropagation();
         return;
       }
       if (deleteAccountModal.open) {
         setDeleteAccountModal({ open: false, connectionId: null, label: "" });
         event.preventDefault();
+        event.stopPropagation();
         return;
       }
     };
-    window.addEventListener("keydown", onKeyDown, true);
-    return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [accountNameModal.open, deleteAccountModal.open, exportModal.open]);
+    document.documentElement.addEventListener("keydown", onKeyDown, true);
+    return () => document.documentElement.removeEventListener("keydown", onKeyDown, true);
+  }, [accountNameModal.open, accountAlertsModal.open, accountAlertsDeleteRecurringId, apiTokenCreateModal, deleteAccountModal.open, exportModal.open]);
+
+  useEffect(() => {
+    if (accountAlertsDeleteRecurringId == null) return;
+    const raf = requestAnimationFrame(() => {
+      accountAlertsDeleteOverlayRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(raf);
+  }, [accountAlertsDeleteRecurringId]);
 
   useEffect(() => {
     if (!accountAlertsModal.open) return;
-    const onEscape = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setEditAlertTemplateId(null);
-        setAccountAlertsModal({
-          open: false,
-          accountId: null,
-          accountLabel: "",
-          alert_above_amount: "0",
-          alert_below_amount: "-100",
-        });
-        e.preventDefault();
-        e.stopPropagation();
-      }
-    };
-    document.addEventListener("keydown", onEscape, true);
-    return () => document.removeEventListener("keydown", onEscape, true);
+    const raf = requestAnimationFrame(() => {
+      accountAlertsOverlayRef.current?.focus();
+    });
+    return () => cancelAnimationFrame(raf);
   }, [accountAlertsModal.open]);
 
   useEffect(() => {
+    const rawStorageMode = profile?.storage_mode;
+    const storageMode: "cloud" | "local" =
+      rawStorageMode === "local" ? "local" : "cloud";
     setProfileForm({
       display_name: profile?.display_name ?? "",
       country: profile?.country ?? "",
       telegram_chat_id: profile?.telegram_chat_id ?? "",
       show_account_balances: profile?.show_account_balances ?? true,
+      auto_detection_enabled: profile?.auto_detection_enabled ?? true,
       telegram_alerts_enabled: profile?.telegram_alerts_enabled ?? true,
+      slack_webhook_url: profile?.slack_webhook_url ?? "",
+      slack_alerts_enabled: profile?.slack_alerts_enabled ?? false,
       weekly_emails_enabled: profile?.weekly_emails_enabled ?? true,
+      storage_mode: storageMode,
     });
   }, [profile]);
+
+  useEffect(() => {
+    if (activeSection === "profile") setProfileTab("user");
+  }, [activeSection]);
 
   // When user sends the link code to the bot, profile gets telegram_chat_id; clear the code UI
   useEffect(() => {
@@ -3537,12 +4270,21 @@ function App() {
         country: profileForm.country || null,
         telegram_chat_id: profileForm.telegram_chat_id || null,
         show_account_balances: profileForm.show_account_balances,
+        auto_detection_enabled: profileForm.auto_detection_enabled,
         telegram_alerts_enabled: profileForm.telegram_alerts_enabled,
+        slack_webhook_url: profileForm.slack_webhook_url?.trim() || null,
+        slack_alerts_enabled: profileForm.slack_alerts_enabled,
         weekly_emails_enabled: profileForm.weekly_emails_enabled,
+        storage_mode: profileForm.storage_mode === "local" ? "local" : "cloud",
       }),
     });
     if (response.ok) {
-      setProfile(await response.json());
+      const data = await response.json();
+      // Preserve slack_webhook_url in profile if API omits it (so form sync keeps the value)
+      if (data.slack_webhook_url === undefined && (profileForm.slack_webhook_url?.trim() ?? "")) {
+        data.slack_webhook_url = profileForm.slack_webhook_url.trim();
+      }
+      setProfile(data);
       showToast(t.profileSaved, "success");
     } else {
       showToast(t.profileSaveError, "error");
@@ -3815,22 +4557,39 @@ function App() {
     }
   };
 
-  const loadAccountAlertTemplates = useCallback(
+  const loadRecurringTransactions = useCallback(
     async (accountId: number) => {
       if (!apiToken) return;
       const response = await fetch(
-        `${apiBase}/api/accounts/${accountId}/alert-templates`,
+        `${apiBase}/api/accounts/${accountId}/recurring-transactions`,
         { headers: { Authorization: `Bearer ${apiToken}` } }
       );
       if (response.ok) {
         const list = await response.json();
-        setAccountAlertTemplates(list);
+        setRecurringTransactions(list);
       } else {
-        setAccountAlertTemplates([]);
+        setRecurringTransactions([]);
       }
     },
     [apiBase, apiToken]
   );
+
+  const recurringAccounts = useMemo(
+    () =>
+      bankAccounts.map((a) => ({
+        id: a.id,
+        friendly_name: a.friendly_name,
+        account_name: a.account_name,
+        institution_name: a.institution_name,
+      })),
+    [bankAccounts]
+  );
+
+  useEffect(() => {
+    if (accountAlertsModal.open && accountAlertsModal.accountId != null && apiToken) {
+      loadRecurringTransactions(accountAlertsModal.accountId);
+    }
+  }, [accountAlertsModal.open, accountAlertsModal.accountId, apiToken, loadRecurringTransactions]);
 
   const handleSaveAccountAlerts = async () => {
     if (!apiToken || accountAlertsModal.accountId == null) return;
@@ -3854,7 +4613,7 @@ function App() {
     if (response.ok) {
       await loadAccounts();
       if (accountAlertsModal.accountId != null) {
-        await loadAccountAlertTemplates(accountAlertsModal.accountId);
+        await loadRecurringTransactions(accountAlertsModal.accountId);
       }
       setToast({ text: t.profileSaved, type: "success" });
       setAccountAlertsModal({
@@ -3869,16 +4628,20 @@ function App() {
     }
   };
 
-  const handleCreateAlertFromTransaction = async () => {
+  const handleCreateRecurringFromTransaction = async () => {
     if (!apiToken || !createAlertModal.txId) return;
+    const dayTol = parseInt(createAlertModal.day_tolerance_before, 10) || 1;
+    const amtTol = createAlertModal.value_tolerance_below || "0";
     const payload = {
-      day_tolerance_before: parseInt(createAlertModal.day_tolerance_before, 10) || 1,
-      day_tolerance_after: parseInt(createAlertModal.day_tolerance_after, 10) || 1,
-      value_tolerance_below: createAlertModal.value_tolerance_below || "1",
-      value_tolerance_above: createAlertModal.value_tolerance_above || "1",
+      name: createAlertModal.description || "Recurring payment",
+      day_tolerance_before: dayTol,
+      day_tolerance_after: dayTol,
+      missing_grace_days: dayTol,
+      amount_tolerance_below: amtTol,
+      amount_tolerance_above: amtTol,
     };
     const response = await fetch(
-      `${apiBase}/api/transactions/${createAlertModal.txId}/create-alert`,
+      `${apiBase}/api/transactions/${createAlertModal.txId}/create-recurring`,
       {
         method: "POST",
         headers: {
@@ -3891,35 +4654,39 @@ function App() {
     if (response.ok) {
       setToast({ text: t.alertCreated, type: "success" });
       setCreateAlertModal((prev) => ({ ...prev, open: false, txId: 0 }));
+      if (accountAlertsModal.accountId != null) {
+        await loadRecurringTransactions(accountAlertsModal.accountId);
+      }
     } else {
       setToast({ text: t.alertCreateError, type: "error" });
     }
   };
 
-  const handleDeleteAlertTemplate = async (templateId: number) => {
+  const handleDeleteRecurringTransaction = async (recurringId: number) => {
     if (!apiToken) return;
-    const response = await fetch(`${apiBase}/api/alert-templates/${templateId}`, {
+    const response = await fetch(`${apiBase}/api/recurring-transactions/${recurringId}`, {
       method: "DELETE",
       headers: { Authorization: `Bearer ${apiToken}` },
     });
     if (response.ok) {
       setToast({ text: t.alertDeleted, type: "success" });
-      setAccountAlertTemplates((prev) => prev.filter((a) => a.id !== templateId));
+      setRecurringTransactions((prev) => prev.filter((r) => r.id !== recurringId));
     }
   };
 
-  const handleUpdateAlertTemplate = async (
-    templateId: number,
+  const handleUpdateRecurringTransaction = async (
+    recurringId: number,
     updates: {
+      name?: string;
       day_tolerance_before?: number;
       day_tolerance_after?: number;
-      value_tolerance_below?: string;
-      value_tolerance_above?: string;
-      description_template?: string | null;
+      amount_tolerance_below?: string;
+      amount_tolerance_above?: string;
+      missing_grace_days?: number;
     }
   ) => {
     if (!apiToken) return;
-    const response = await fetch(`${apiBase}/api/alert-templates/${templateId}`, {
+    const response = await fetch(`${apiBase}/api/recurring-transactions/${recurringId}`, {
       method: "PATCH",
       headers: {
         Authorization: `Bearer ${apiToken}`,
@@ -3928,31 +4695,31 @@ function App() {
       body: JSON.stringify(updates),
     });
     if (response.ok) {
-      setAccountAlertTemplates((prev) =>
-        prev.map((a) =>
-          a.id === templateId
+      setRecurringTransactions((prev) =>
+        prev.map((r) =>
+          r.id === recurringId
             ? {
-                ...a,
+                ...r,
+                ...(updates.name !== undefined && { name: updates.name }),
                 ...(updates.day_tolerance_before !== undefined && {
                   day_tolerance_before: updates.day_tolerance_before,
                 }),
                 ...(updates.day_tolerance_after !== undefined && {
                   day_tolerance_after: updates.day_tolerance_after,
                 }),
-                ...(updates.value_tolerance_below !== undefined && {
-                  value_tolerance_below: updates.value_tolerance_below,
+                ...(updates.amount_tolerance_below !== undefined && {
+                  amount_tolerance_below: updates.amount_tolerance_below,
                 }),
-                ...(updates.value_tolerance_above !== undefined && {
-                  value_tolerance_above: updates.value_tolerance_above,
+                ...(updates.amount_tolerance_above !== undefined && {
+                  amount_tolerance_above: updates.amount_tolerance_above,
                 }),
-                ...(updates.description_template !== undefined && {
-                  description_template: updates.description_template,
+                ...(updates.missing_grace_days !== undefined && {
+                  missing_grace_days: updates.missing_grace_days,
                 }),
               }
-            : a
+            : r
         )
       );
-      setEditAlertTemplateId(null);
     }
   };
 
@@ -4032,6 +4799,7 @@ function App() {
     { id: "transactions", labelKey: "navTransactions", icon: "fa-receipt" },
     { id: "accounts", labelKey: "navAccounts", icon: "fa-building-columns" },
     { id: "insights", labelKey: "navInsights", icon: "fa-chart-line" },
+    { id: "recurring", labelKey: "navRecurring", icon: "fa-arrows-rotate" },
   ];
 
   return (
@@ -4194,8 +4962,12 @@ function App() {
                           country: profile.country ?? "",
                           telegram_chat_id: profile.telegram_chat_id ?? "",
                           show_account_balances: profile.show_account_balances ?? true,
+                          auto_detection_enabled: profile.auto_detection_enabled ?? true,
                           telegram_alerts_enabled: profile.telegram_alerts_enabled ?? true,
                           weekly_emails_enabled: profile.weekly_emails_enabled ?? true,
+                          slack_webhook_url: profile.slack_webhook_url ?? "",
+                          slack_alerts_enabled: profile.slack_alerts_enabled ?? false,
+                          storage_mode: (profile.storage_mode === "local" ? "local" : "cloud") as "cloud" | "local",
                         });
                         setActiveSection("profile");
                         setUserMenuOpen(false);
@@ -4203,8 +4975,20 @@ function App() {
                     >
                       {t.menuProfile}
                     </button>
+                    <button
+                      className="dropdown-item w-full text-left"
+                      type="button"
+                      onClick={() => {
+                        setUserMenuLocked(true);
+                        setActiveSection("settings");
+                        setUserMenuOpen(false);
+                      }}
+                    >
+                      {t.menuSettings}
+                    </button>
                     {profile?.is_admin ? (
                       <>
+                        <div className="dropdown-separator" role="separator" />
                         <button
                           className="dropdown-item w-full text-left"
                           type="button"
@@ -4221,25 +5005,28 @@ function App() {
                           type="button"
                           onClick={() => {
                             setUserMenuLocked(true);
+                            setActiveSection("adminDashboard");
+                            setUserMenuOpen(false);
+                          }}
+                        >
+                          {t.menuAdminDashboard}
+                        </button>
+                        <button
+                          className="dropdown-item w-full text-left"
+                          type="button"
+                          onClick={() => {
+                            setUserMenuLocked(true);
                             setActiveSection("audit");
                             setUserMenuOpen(false);
                           }}
                         >
                           {t.menuAudit}
                         </button>
+                        <div className="dropdown-separator" role="separator" />
                       </>
-                    ) : null}
-                    <button
-                      className="dropdown-item w-full text-left"
-                      type="button"
-                      onClick={() => {
-                        setUserMenuLocked(true);
-                        setActiveSection("settings");
-                        setUserMenuOpen(false);
-                      }}
-                    >
-                      {t.menuSettings}
-                    </button>
+                    ) : (
+                      <div className="dropdown-separator" role="separator" />
+                    )}
                     <button
                       className="dropdown-item w-full text-left"
                       type="button"
@@ -4552,6 +5339,7 @@ function App() {
                   {t.signupRequestBody}
                 </p>
                 <form
+                  id="signup-request-form"
                   className="flex flex-col gap-3"
                   onSubmit={async (e) => {
                     e.preventDefault();
@@ -4601,17 +5389,31 @@ function App() {
                       {signupRequestError}
                     </p>
                   ) : null}
-                  <button
-                    type="submit"
-                    className="btn-primary w-full"
-                    disabled={signupRequestSubmitting}
-                  >
-                    {signupRequestSubmitting ? "…" : t.signupRequestSubmit}
-                  </button>
                 </form>
               </>
             )}
-            <div className="flex justify-end mt-4">
+            <div className="flex justify-end items-center gap-2 mt-4">
+              {!signupRequestSuccess && (
+                <button
+                  type="submit"
+                  form="signup-request-form"
+                  className="inline-flex items-center justify-center p-2 rounded-md border transition-colors shrink-0"
+                  style={{
+                    background: "var(--primary-50)",
+                    borderColor: "var(--primary)",
+                    color: "var(--primary)",
+                  }}
+                  title={t.signupRequestSubmit}
+                  aria-label={t.signupRequestSubmit}
+                  disabled={signupRequestSubmitting}
+                >
+                  {signupRequestSubmitting ? (
+                    <span className="text-sm">…</span>
+                  ) : (
+                    <i className="fa-solid fa-paper-plane text-sm" aria-hidden />
+                  )}
+                </button>
+              )}
               <button
                 type="button"
                 className="p-2 rounded-md border transition-colors"
@@ -4687,9 +5489,29 @@ function App() {
         </div>
       ) : null}
       {accountAlertsModal.open ? (
-        <div className="modal-overlay">
+        <div
+          ref={accountAlertsOverlayRef}
+          className="modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="account-alerts-title"
+          tabIndex={-1}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" || e.key === "Esc") {
+              e.preventDefault();
+              e.stopPropagation();
+              setAccountAlertsModal({
+                open: false,
+                accountId: null,
+                accountLabel: "",
+                alert_above_amount: "0",
+                alert_below_amount: "-100",
+              });
+            }
+          }}
+        >
           <div className="modal-card max-h-[90vh] overflow-y-auto">
-            <h3 className="card-title">{t.accountAlertsTitle}</h3>
+            <h3 id="account-alerts-title" className="card-title">{t.accountAlertsTitle}</h3>
             <p className="text-sm text-slate-500 dark:text-slate-300">
               {accountAlertsModal.accountLabel}
             </p>
@@ -4726,48 +5548,44 @@ function App() {
               </label>
             </div>
             <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-700">
-              <h4 className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                {t.accountTransactionAlerts}
-              </h4>
-              {accountAlertTemplates.length === 0 ? (
+              <div className="flex items-center justify-between gap-2">
+                <h4 className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                  {t.accountTransactionAlerts}
+                </h4>
+                <button
+                  type="button"
+                  className="text-xs font-medium"
+                  style={{ color: "var(--primary)" }}
+                  onClick={() => {
+                    setAccountAlertsModal((prev) => ({ ...prev, open: false, accountId: null, accountLabel: "", alert_above_amount: "0", alert_below_amount: "-100" }));
+                    setActiveSection("recurring");
+                  }}
+                >
+                  {t.navRecurring} →
+                </button>
+              </div>
+              {recurringTransactions.length === 0 ? (
                 <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
                   {t.accountTransactionAlertsEmpty}
                 </p>
               ) : (
                 <ul className="mt-2 space-y-2">
-                  {accountAlertTemplates.map((tpl) => (
+                  {recurringTransactions.map((rec) => (
                     <li
-                      key={tpl.id}
+                      key={rec.id}
                       className="rounded border border-slate-200 bg-slate-50 p-2 text-sm dark:border-slate-700 dark:bg-slate-800/50"
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <div className="min-w-0 flex-1">
                           <div className="font-medium text-slate-700 dark:text-slate-200 truncate">
-                            {tpl.description_template || "—"}
+                            {rec.name || rec.description_pattern || "—"}
                           </div>
                           <div className="text-xs text-slate-500 dark:text-slate-400">
-                            {t.alertTemplateDay}: {tpl.expected_day_of_month} {t.alertTemplateDayTolerance.replace("{before}", String(tpl.day_tolerance_before)).replace("{after}", String(tpl.day_tolerance_after))} · {t.alertTemplateAmount}: {tpl.expected_amount}
+                            {t.alertTemplateDay}: {rec.anchor_day} (±{Math.max(rec.day_tolerance_before ?? 1, rec.day_tolerance_after ?? 1, rec.missing_grace_days ?? 1)} {t.alertTemplateDays}) · {t.alertTemplateAmount}: {(rec.expected_amount ?? "").trim() ? `${rec.expected_amount} (±${rec.amount_tolerance_below ?? rec.amount_tolerance_above ?? "0"})` : t.recurringAmountVaries}
+                            {rec.next_expected_date ? ` · Next: ${String(rec.next_expected_date)}` : ""}
                           </div>
                         </div>
                         <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            className="p-2 rounded-md border transition-colors"
-                            style={{
-                              background: "var(--surface-hover)",
-                              borderColor: "var(--border)",
-                              color: "var(--text)",
-                            }}
-                            title={t.alertTemplateEdit}
-                            aria-label={t.alertTemplateEdit}
-                            onClick={() =>
-                              setEditAlertTemplateId(
-                                editAlertTemplateId === tpl.id ? null : tpl.id
-                              )
-                            }
-                          >
-                            <i className="fa-solid fa-pen text-xs" />
-                          </button>
                           <button
                             type="button"
                             className="p-2 rounded-md border transition-colors"
@@ -4778,105 +5596,12 @@ function App() {
                             }}
                             title={t.alertTemplateDelete}
                             aria-label={t.alertTemplateDelete}
-                            onClick={() => {
-                              if (window.confirm(t.modalConfirm)) {
-                                handleDeleteAlertTemplate(tpl.id);
-                              }
-                            }}
+                            onClick={() => setAccountAlertsDeleteRecurringId(rec.id)}
                           >
                             <i className="fa-solid fa-trash text-xs" />
                           </button>
                         </div>
                       </div>
-                      {editAlertTemplateId === tpl.id ? (
-                        <div className="mt-3 grid grid-cols-2 gap-2 border-t border-slate-200 pt-3 dark:border-slate-600">
-                          <label className="grid gap-0.5 text-xs">
-                            <span>{t.createAlertDayToleranceBefore}</span>
-                            <input
-                              type="number"
-                              min={0}
-                              className="input text-xs"
-                              defaultValue={tpl.day_tolerance_before}
-                              id={`edit-day-before-${tpl.id}`}
-                            />
-                          </label>
-                          <label className="grid gap-0.5 text-xs">
-                            <span>{t.createAlertDayToleranceAfter}</span>
-                            <input
-                              type="number"
-                              min={0}
-                              className="input text-xs"
-                              defaultValue={tpl.day_tolerance_after}
-                              id={`edit-day-after-${tpl.id}`}
-                            />
-                          </label>
-                          <label className="grid gap-0.5 text-xs">
-                            <span>{t.createAlertValueToleranceBelow}</span>
-                            <input
-                              type="text"
-                              className="input text-xs"
-                              defaultValue={tpl.value_tolerance_below}
-                              id={`edit-value-below-${tpl.id}`}
-                            />
-                          </label>
-                          <label className="grid gap-0.5 text-xs">
-                            <span>{t.createAlertValueToleranceAbove}</span>
-                            <input
-                              type="text"
-                              className="input text-xs"
-                              defaultValue={tpl.value_tolerance_above}
-                              id={`edit-value-above-${tpl.id}`}
-                            />
-                          </label>
-                          <div className="col-span-2 flex justify-end gap-1">
-                            <button
-                              type="button"
-                              className="p-2 rounded-md border transition-colors"
-                              style={{
-                                background: "var(--surface-hover)",
-                                borderColor: "var(--border)",
-                                color: "var(--text)",
-                              }}
-                              title={t.modalCancel}
-                              aria-label={t.modalCancel}
-                              onClick={() => setEditAlertTemplateId(null)}
-                            >
-                              <i className="fa-solid fa-xmark text-xs" />
-                            </button>
-                            <button
-                              type="button"
-                              className="p-2 rounded-md border transition-colors"
-                              style={{
-                                background: "var(--primary-50)",
-                                borderColor: "var(--primary)",
-                                color: "var(--primary)",
-                              }}
-                              title={t.modalConfirm}
-                              aria-label={t.modalConfirm}
-                              onClick={() => {
-                                const dayBefore = parseInt(
-                                  (document.getElementById(`edit-day-before-${tpl.id}`) as HTMLInputElement)?.value ?? "1",
-                                  10
-                                );
-                                const dayAfter = parseInt(
-                                  (document.getElementById(`edit-day-after-${tpl.id}`) as HTMLInputElement)?.value ?? "1",
-                                  10
-                                );
-                                const valueBelow = (document.getElementById(`edit-value-below-${tpl.id}`) as HTMLInputElement)?.value ?? "1";
-                                const valueAbove = (document.getElementById(`edit-value-above-${tpl.id}`) as HTMLInputElement)?.value ?? "1";
-                                handleUpdateAlertTemplate(tpl.id, {
-                                  day_tolerance_before: dayBefore,
-                                  day_tolerance_after: dayAfter,
-                                  value_tolerance_below: valueBelow,
-                                  value_tolerance_above: valueAbove,
-                                });
-                              }}
-                            >
-                              <i className="fa-solid fa-check text-xs" />
-                            </button>
-                          </div>
-                        </div>
-                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -4925,6 +5650,71 @@ function App() {
           </div>
         </div>
       ) : null}
+      {/* Delete recurring confirmation (from Limiares de alerta) */}
+      {accountAlertsDeleteRecurringId != null ? (
+        <div
+          ref={accountAlertsDeleteOverlayRef}
+          className="modal-overlay"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="account-alerts-delete-title"
+          style={{ zIndex: 10001 }}
+          tabIndex={-1}
+          onClick={() => setAccountAlertsDeleteRecurringId(null)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape" || e.key === "Esc") {
+              e.preventDefault();
+              e.stopPropagation();
+              setAccountAlertsDeleteRecurringId(null);
+            }
+          }}
+        >
+          <div
+            className="modal-card max-w-md w-full"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 id="account-alerts-delete-title" className="card-title">
+              {t.deleteConfirm}
+            </h3>
+            {(() => {
+              const rec = recurringTransactions.find((r) => r.id === accountAlertsDeleteRecurringId);
+              return rec ? (
+                <p className="mt-2 text-sm text-slate-600 dark:text-slate-400 truncate" title={rec.name || rec.description_pattern || ""}>
+                  {rec.name || rec.description_pattern || "—"}
+                </p>
+              ) : null;
+            })()}
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                className="p-2 rounded-md border transition-colors"
+                style={{
+                  background: "var(--surface-hover)",
+                  borderColor: "var(--border)",
+                  color: "var(--text)",
+                }}
+                title={t.modalCancel}
+                aria-label={t.modalCancel}
+                onClick={() => setAccountAlertsDeleteRecurringId(null)}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+              <button
+                type="button"
+                className="p-2 rounded-md border transition-colors border-red-500 bg-red-500 text-white hover:opacity-90"
+                title={t.modalConfirm}
+                aria-label={t.modalConfirm}
+                onClick={async () => {
+                  await handleDeleteRecurringTransaction(accountAlertsDeleteRecurringId);
+                  setAccountAlertsDeleteRecurringId(null);
+                }}
+              >
+                <i className="fa-solid fa-check" />
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {createAlertModal.open ? (
         <div className="modal-overlay">
           <div className="modal-card">
@@ -4937,63 +5727,37 @@ function App() {
             </p>
             <div className="mt-4 grid gap-3">
               <label className="grid gap-1 text-sm">
-                <span>{t.createAlertDayToleranceBefore}</span>
+                <span>{t.detailDayTolerance}</span>
                 <input
                   type="number"
                   min={0}
                   className="input"
                   value={createAlertModal.day_tolerance_before}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const v = e.target.value;
                     setCreateAlertModal((prev) => ({
                       ...prev,
-                      day_tolerance_before: e.target.value,
-                    }))
-                  }
+                      day_tolerance_before: v,
+                      day_tolerance_after: v,
+                    }));
+                  }}
                 />
               </label>
               <label className="grid gap-1 text-sm">
-                <span>{t.createAlertDayToleranceAfter}</span>
-                <input
-                  type="number"
-                  min={0}
-                  className="input"
-                  value={createAlertModal.day_tolerance_after}
-                  onChange={(e) =>
-                    setCreateAlertModal((prev) => ({
-                      ...prev,
-                      day_tolerance_after: e.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <label className="grid gap-1 text-sm">
-                <span>{t.createAlertValueToleranceBelow}</span>
+                <span>{t.detailAmountTolerance}</span>
                 <input
                   type="text"
                   inputMode="decimal"
                   className="input"
                   value={createAlertModal.value_tolerance_below}
-                  onChange={(e) =>
+                  onChange={(e) => {
+                    const v = e.target.value;
                     setCreateAlertModal((prev) => ({
                       ...prev,
-                      value_tolerance_below: e.target.value,
-                    }))
-                  }
-                />
-              </label>
-              <label className="grid gap-1 text-sm">
-                <span>{t.createAlertValueToleranceAbove}</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  className="input"
-                  value={createAlertModal.value_tolerance_above}
-                  onChange={(e) =>
-                    setCreateAlertModal((prev) => ({
-                      ...prev,
-                      value_tolerance_above: e.target.value,
-                    }))
-                  }
+                      value_tolerance_below: v,
+                      value_tolerance_above: v,
+                    }));
+                  }}
                 />
               </label>
             </div>
@@ -5012,7 +5776,7 @@ function App() {
                 className="icon-button"
                 type="button"
                 title={t.modalConfirm}
-                onClick={handleCreateAlertFromTransaction}
+                onClick={handleCreateRecurringFromTransaction}
               >
                 <i className="fa-solid fa-check"></i>
               </button>
@@ -5484,12 +6248,14 @@ function App() {
               alertTemplateDay: t.alertTemplateDay,
               alertTemplateDayTolerance: t.alertTemplateDayTolerance,
               alertTemplateAmount: t.alertTemplateAmount,
+              alertTemplateDescription: t.alertTemplateDescription,
               alertTemplateEdit: t.alertTemplateEdit,
               alertTemplateDelete: t.alertTemplateDelete,
-              createAlertDayToleranceBefore: t.createAlertDayToleranceBefore,
-              createAlertDayToleranceAfter: t.createAlertDayToleranceAfter,
-              createAlertValueToleranceBelow: t.createAlertValueToleranceBelow,
-              createAlertValueToleranceAbove: t.createAlertValueToleranceAbove,
+              deleteConfirm: t.deleteConfirm,
+              alertTemplateDays: t.alertTemplateDays,
+              detailDayTolerance: t.detailDayTolerance,
+              detailAmountTolerance: t.detailAmountTolerance,
+              recurringAmountVaries: t.recurringAmountVaries,
               modalCancel: t.modalCancel,
               modalConfirm: t.modalConfirm,
               confirmDeleteAccount: t.confirmDeleteAccount,
@@ -5583,6 +6349,120 @@ function App() {
               showToast={showToast}
             />
           </div>
+        ) : null}
+
+        {/* Recurring transactions (B012 Phase 4) */}
+        {isAuthenticated && !profile?.needs_onboarding && activeSection === "recurring" && apiToken ? (
+          <RecurringTransactions
+            apiBase={apiBase}
+            token={apiToken}
+            accounts={recurringAccounts}
+            locale={getLocale()}
+            initialDetectionRunAt={profile?.recurring_initial_detection_run_at ?? undefined}
+            storageMode={profile?.storage_mode}
+            onInitialDetectionDone={async () => {
+              try {
+                const res = await fetch(`${apiBase}/api/me`, {
+                  headers: { Authorization: `Bearer ${apiToken}` },
+                });
+                if (res.ok) setProfile(await res.json());
+              } catch {
+                // ignore
+              }
+            }}
+            t={{
+              recurringTitle: t.recurringTitle,
+              recurringSubtitle: t.recurringSubtitle,
+              recurringInitialOfferTitle: t.recurringInitialOfferTitle,
+              recurringInitialOfferBody: t.recurringInitialOfferBody,
+              recurringInitialOfferAnalyze: t.recurringInitialOfferAnalyze,
+              recurringInitialOfferSkip: t.recurringInitialOfferSkip,
+              recurringEmptyGuidance: t.recurringEmptyGuidance,
+              recurringFindSuggestions: t.recurringFindSuggestions,
+              recurringFinding: t.recurringFinding,
+              recurringNoSuggestions: t.recurringNoSuggestions,
+              recurringReviewSuggestions: t.recurringReviewSuggestions,
+              recurringSuggestionsCount: t.recurringSuggestionsCount,
+              recurringConfirm: t.recurringConfirm,
+              recurringDismiss: t.recurringDismiss,
+              recurringSkip: t.recurringSkip,
+              recurringEditThenConfirm: t.recurringEditThenConfirm,
+              recurringProgressOf: t.recurringProgressOf,
+              filterAccount: t.filterAccount,
+              filterAccountAll: t.filterAccountAll,
+              filterStatus: t.filterStatus,
+              filterStatusAll: t.filterStatusAll,
+              filterStatusActive: t.filterStatusActive,
+              filterStatusPaused: t.filterStatusPaused,
+              filterStatusSuggested: t.filterStatusSuggested,
+              sortBy: t.sortBy,
+              sortNextDate: t.sortNextDate,
+              sortName: t.sortName,
+              sortFrequency: t.sortFrequency,
+              sortAmount: t.sortAmount,
+              sortConfidence: t.sortConfidence,
+              searchPlaceholder: t.searchPlaceholder,
+              recurringEmpty: t.recurringEmpty,
+              recurringNext: t.recurringNext,
+              recurringAmount: t.recurringAmount,
+              recurringAmountVaries: t.recurringAmountVaries,
+              recurringFrequency: t.recurringFrequency,
+              recurringFrequencyWeekly: t.recurringFrequencyWeekly,
+              recurringFrequencyBiweekly: t.recurringFrequencyBiweekly,
+              recurringFrequencyMonthly: t.recurringFrequencyMonthly,
+              recurringFrequencyQuarterly: t.recurringFrequencyQuarterly,
+              recurringFrequencyYearly: t.recurringFrequencyYearly,
+              recurringStatusActive: t.recurringStatusActive,
+              recurringStatusPaused: t.recurringStatusPaused,
+              recurringStatusSuggested: t.recurringStatusSuggested,
+              recurringStatusDismissed: t.recurringStatusDismissed,
+              recurringStatusArchived: t.recurringStatusArchived,
+              recurringCreateManual: t.recurringCreateManual,
+              recurringEdit: t.recurringEdit,
+              recurringPause: t.recurringPause,
+              recurringResume: t.recurringResume,
+              recurringDelete: t.recurringDelete,
+              recurringViewList: t.recurringViewList,
+              recurringViewCalendar: t.recurringViewCalendar,
+              calendarToday: t.calendarToday,
+              calendarMonthTitle: t.calendarMonthTitle,
+              calendarSummaryTransactions: t.calendarSummaryTransactions,
+              calendarSummaryAmount: t.calendarSummaryAmount,
+              calendarUpcoming: t.calendarUpcoming,
+              countdownToday: t.countdownToday,
+              countdownTomorrow: t.countdownTomorrow,
+              countdownInNDays: t.countdownInNDays,
+              countdownDaysAgo: t.countdownDaysAgo,
+              modalCancel: t.modalCancel,
+              modalSave: t.modalSave,
+              modalClose: t.modalClose,
+              detailName: t.detailName,
+              detailDescriptionPattern: t.detailDescriptionPattern,
+              detailFrequency: t.detailFrequency,
+              detailInterval: t.detailInterval,
+              detailAnchorDay: t.detailAnchorDay,
+              detailDayTolerance: t.detailDayTolerance,
+              createAlertDayToleranceBefore: t.createAlertDayToleranceBefore,
+              createAlertDayToleranceAfter: t.createAlertDayToleranceAfter,
+              detailExpectedAmount: t.detailExpectedAmount,
+              detailNominalAmount: t.detailNominalAmount,
+              detailAmountTolerance: t.detailAmountTolerance,
+              createAlertValueToleranceBelow: t.createAlertValueToleranceBelow,
+              createAlertValueToleranceAbove: t.createAlertValueToleranceAbove,
+              detailAlertOnOccurrence: t.detailAlertOnOccurrence,
+              detailAlertOnMissing: t.detailAlertOnMissing,
+              detailMissingGraceDays: t.detailMissingGraceDays,
+              createRecurringTitle: t.createRecurringTitle,
+              createRecurringSuccess: t.createRecurringSuccess,
+              createRecurringError: t.createRecurringError,
+              deleteConfirm: t.deleteConfirm,
+              deleteSuccess: t.deleteSuccess,
+              confirmSuccess: t.confirmSuccess,
+              confirmOnlySuggestedError: t.confirmOnlySuggestedError,
+              dismissSuccess: t.dismissSuccess,
+            }}
+            onToast={showToast}
+          />
         ) : null}
 
         {isAuthenticated && !profile?.needs_onboarding && activeSection === "transactions" ? (
@@ -6143,8 +7023,8 @@ function App() {
                               dayOfMonth: day,
                               day_tolerance_before: "1",
                               day_tolerance_after: "1",
-                              value_tolerance_below: "1",
-                              value_tolerance_above: "1",
+                              value_tolerance_below: "0",
+                              value_tolerance_above: "0",
                             });
                           }}
                         >
@@ -6299,210 +7179,463 @@ function App() {
                   <i className="fa-regular fa-circle-question" aria-hidden />
                 </button>
               </div>
-              <div className="mt-4 grid gap-4 text-sm text-slate-600 dark:text-slate-300">
-                <div>
-                  <span className="font-medium">{t.profileEmail}:</span>{" "}
-                  {profile.emails?.find((email) => email.is_primary)?.email ??
-                    profile.emails?.[0]?.email ??
-                    t.profileNoEmail}
-                </div>
-                <label className="grid gap-2">
-                  <span className="font-medium">{t.profileName}</span>
-                  <input
-                    className="input"
-                    value={profileForm.display_name}
-                    onChange={(event) =>
-                      setProfileForm((prev) => ({
-                        ...prev,
-                        display_name: event.target.value,
-                      }))
-                    }
-                    placeholder={t.profileName}
-                  />
-                </label>
-                <label className="grid gap-2">
-                  <span className="font-medium">{t.profileCountry}</span>
-                  <select
-                    className="input"
-                    value={profileForm.country}
-                    onChange={(event) =>
-                      setProfileForm((prev) => ({
-                        ...prev,
-                        country: event.target.value,
-                      }))
-                    }
-                  >
-                    <option value="" disabled>{t.profileCountryPlaceholder}</option>
-                    {countryOptions.map((item) => (
-                      <option key={item.code} value={item.code}>
-                        {item.names[language.code as "en" | "pt" | "es" | "fr"] ??
-                          item.names.en}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div className="grid gap-2">
-                  <span className="font-medium">{t.profileTelegramId}</span>
-                  {profile?.telegram_chat_id ? (
-                    <div className="flex flex-wrap items-center gap-2">
-                      <p className="text-sm" style={{ color: "var(--text)" }}>
-                        {t.profileTelegramLinked} (ID: {profile.telegram_chat_id})
-                      </p>
-                      <button
-                        type="button"
-                        className="text-sm underline"
-                        style={{ color: "var(--text)" }}
-                        onClick={async () => {
-                          if (!apiToken) return;
-                          const res = await fetch(`${apiBase}/api/telegram/unlink`, {
-                            method: "DELETE",
-                            headers: { Authorization: `Bearer ${apiToken}` },
-                          });
-                          if (res.ok) {
-                            const meRes = await fetch(`${apiBase}/api/me`, {
+              <div className="mt-4 text-sm text-slate-600 dark:text-slate-300">
+                <nav
+                  className="flex flex-wrap gap-1 border-b mb-4"
+                  style={{ borderColor: "var(--border)" }}
+                  aria-label={t.profileTitle}
+                >
+                  {(["user", "channels", "alerts", "storage", "tokens"] as const).map((tabId) => (
+                    <button
+                      key={tabId}
+                      type="button"
+                      className="px-3 py-2 rounded-t text-sm font-medium transition-colors"
+                      style={{
+                        color: profileTab === tabId ? "var(--primary)" : "var(--text-secondary)",
+                        borderBottom: profileTab === tabId ? "2px solid var(--primary)" : "2px solid transparent",
+                        marginBottom: -1,
+                      }}
+                      onClick={() => setProfileTab(tabId)}
+                    >
+                      {tabId === "user" && t.profileTabUser}
+                      {tabId === "channels" && t.profileTabChannels}
+                      {tabId === "alerts" && t.profileTabAlerts}
+                      {tabId === "storage" && t.profileTabStorage}
+                      {tabId === "tokens" && t.profileTabApiTokens}
+                    </button>
+                  ))}
+                </nav>
+                <div className="grid gap-4">
+                  {profileTab === "user" && (
+                    <>
+                      <div>
+                        <span className="font-medium">{t.profileEmail}:</span>{" "}
+                        {profile.emails?.find((email) => email.is_primary)?.email ??
+                          profile.emails?.[0]?.email ??
+                          t.profileNoEmail}
+                      </div>
+                      <label className="grid gap-2">
+                        <span className="font-medium">{t.profileName}</span>
+                        <input
+                          className="input"
+                          value={profileForm.display_name}
+                          onChange={(event) =>
+                            setProfileForm((prev) => ({
+                              ...prev,
+                              display_name: event.target.value,
+                            }))
+                          }
+                          placeholder={t.profileName}
+                        />
+                      </label>
+                      <label className="grid gap-2">
+                        <span className="font-medium">{t.profileCountry}</span>
+                        <select
+                          className="input"
+                          value={profileForm.country}
+                          onChange={(event) =>
+                            setProfileForm((prev) => ({
+                              ...prev,
+                              country: event.target.value,
+                            }))
+                          }
+                        >
+                          <option value="" disabled>{t.profileCountryPlaceholder}</option>
+                          {countryOptions.map((item) => (
+                            <option key={item.code} value={item.code}>
+                              {item.names[language.code as "en" | "pt" | "es" | "fr"] ??
+                                item.names.en}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={profileForm.show_account_balances}
+                          onChange={(event) =>
+                            setProfileForm((prev) => ({
+                              ...prev,
+                              show_account_balances: event.target.checked,
+                            }))
+                          }
+                          className="h-4 w-4"
+                        />
+                        <div className="flex-1">
+                          <span className="font-medium" style={{ color: "var(--text)" }}>
+                            {t.profileShowBalances}
+                          </span>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                            {t.profileShowBalancesHelp}
+                          </p>
+                        </div>
+                      </label>
+                      <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={profileForm.auto_detection_enabled}
+                          onChange={(event) =>
+                            setProfileForm((prev) => ({
+                              ...prev,
+                              auto_detection_enabled: event.target.checked,
+                            }))
+                          }
+                          className="h-4 w-4"
+                        />
+                        <div className="flex-1">
+                          <span className="font-medium" style={{ color: "var(--text)" }}>
+                            {t.profileAutoDetection}
+                          </span>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                            {t.profileAutoDetectionHelp}
+                          </p>
+                        </div>
+                      </label>
+                      <div>
+                        <span className="font-medium">{t.profileAdmin}:</span>{" "}
+                        {profile.is_admin ? "✓" : "—"}
+                      </div>
+                    </>
+                  )}
+                  {profileTab === "channels" && (
+                    <>
+                <div className="grid gap-4">
+                  <div className="grid gap-2">
+                    <span className="font-medium inline-flex items-center gap-2" style={{ color: "var(--text)" }}>
+                      <i className="fa-brands fa-telegram" aria-hidden style={{ color: "#0088cc" }} />
+                      {t.profileTelegramId}
+                    </span>
+                    {profile?.telegram_chat_id ? (
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-sm" style={{ color: "var(--text)" }}>
+                          {t.profileTelegramLinked} (ID: {profile.telegram_chat_id})
+                        </p>
+                        <button
+                          type="button"
+                          className="inline-flex items-center justify-center p-2 rounded border transition-colors min-w-[2.25rem]"
+                          style={{
+                            background: "var(--surface-hover)",
+                            borderColor: "var(--border)",
+                            color: "var(--text)",
+                          }}
+                          title={t.profileTelegramUnlink}
+                          aria-label={t.profileTelegramUnlink}
+                          onClick={async () => {
+                            if (!apiToken) return;
+                            const res = await fetch(`${apiBase}/api/telegram/unlink`, {
+                              method: "DELETE",
                               headers: { Authorization: `Bearer ${apiToken}` },
                             });
-                            if (meRes.ok) setProfile(await meRes.json());
-                            setProfileForm((prev) => ({ ...prev, telegram_chat_id: "" }));
+                            if (res.ok) {
+                              const meRes = await fetch(`${apiBase}/api/me`, {
+                                headers: { Authorization: `Bearer ${apiToken}` },
+                              });
+                              if (meRes.ok) setProfile(await meRes.json());
+                              setProfileForm((prev) => ({ ...prev, telegram_chat_id: "" }));
+                            }
+                          }}
+                        >
+                          <i className="fa-solid fa-link-slash text-sm" aria-hidden />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          className="btn primary"
+                          onClick={handleTelegramLinkCode}
+                          disabled={telegramLinkCodeLoading}
+                        >
+                          {telegramLinkCodeLoading ? "…" : t.profileTelegramLinkButton}
+                        </button>
+                        {telegramLinkCodeError && (
+                          <p className="text-xs text-red-600 dark:text-red-400">
+                            {telegramLinkCodeError}
+                          </p>
+                        )}
+                        {telegramLinkCode && (
+                          <div
+                            className="rounded-lg border p-4 space-y-2"
+                            style={{
+                              borderColor: "var(--border)",
+                              background: "var(--surface)",
+                            }}
+                          >
+                            <p className="text-sm" style={{ color: "var(--text)" }}>
+                              1. {t.profileTelegramLinkStep1}
+                              {telegramLinkCode.bot_link ? (
+                                <>
+                                  {" "}
+                                  <a
+                                    href={telegramLinkCode.bot_link}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="underline"
+                                  >
+                                    @{telegramLinkCode.bot_username}
+                                  </a>
+                                </>
+                              ) : null}
+                            </p>
+                            <p className="text-sm" style={{ color: "var(--text)" }}>
+                              2. {t.profileTelegramLinkStep2}:{" "}
+                              <strong className="font-mono text-lg tracking-wider">
+                                {telegramLinkCode.code}
+                              </strong>
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">
+                              {t.profileTelegramLinkExpires}
+                            </p>
+                          </div>
+                        )}
+                        <p className="text-xs text-slate-500 dark:text-slate-400">
+                          {t.profileTelegramOrManual}
+                        </p>
+                        <input
+                          className="input"
+                          type="text"
+                          value={profileForm.telegram_chat_id}
+                          onChange={(event) =>
+                            setProfileForm((prev) => ({
+                              ...prev,
+                              telegram_chat_id: event.target.value,
+                            }))
+                          }
+                          placeholder={t.profileTelegramId}
+                        />
+                      </>
+                    )}
+                  </div>
+                  <div ref={slackHelpRef} className="relative grid gap-2">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium inline-flex items-center gap-2" style={{ color: "var(--text)" }}>
+                        <i className="fa-brands fa-slack" aria-hidden style={{ color: "#4A154B" }} />
+                        {t.profileSlackWebhookUrl}
+                      </span>
+                      <button
+                        type="button"
+                        className="p-0.5 rounded focus:outline-none focus:ring-2 focus:ring-offset-1"
+                        style={{ color: "var(--text)" }}
+                        aria-label={t.profileSlackWebhookUrl}
+                        onClick={() => setSlackHelpOpen((open) => !open)}
+                      >
+                        <i className="fa-solid fa-circle-question text-base" aria-hidden />
+                      </button>
+                      <button
+                        type="button"
+                        className="p-0.5 rounded focus:outline-none focus:ring-2 focus:ring-offset-1 disabled:opacity-50"
+                        style={{ color: "var(--text)" }}
+                        title={t.profileSlackTestButton}
+                        aria-label={t.profileSlackTestButton}
+                        disabled={slackTestLoading || !(profileForm.slack_webhook_url?.trim())}
+                        onClick={async () => {
+                          if (!apiToken) return;
+                          setSlackTestLoading(true);
+                          try {
+                            const res = await fetch(`${apiBase}/api/slack/test`, {
+                              method: "POST",
+                              headers: {
+                                Authorization: `Bearer ${apiToken}`,
+                                "Content-Type": "application/json",
+                              },
+                              body: JSON.stringify({
+                                webhook_url: profileForm.slack_webhook_url?.trim() || null,
+                              }),
+                            });
+                            if (res.ok) {
+                              showToast(t.profileSlackTestSent, "success");
+                            } else {
+                              const err = await res.json().catch(() => ({}));
+                              showToast(err.detail || t.profileSlackTestError, "error");
+                            }
+                          } catch {
+                            showToast(t.profileSlackTestError, "error");
+                          } finally {
+                            setSlackTestLoading(false);
                           }
                         }}
                       >
-                        {t.profileTelegramUnlink}
+                        <i className="fa-solid fa-paper-plane text-sm" aria-hidden />
                       </button>
                     </div>
-                  ) : (
-                    <>
-                      <button
-                        type="button"
-                        className="btn primary"
-                        onClick={handleTelegramLinkCode}
-                        disabled={telegramLinkCodeLoading}
+                    {slackHelpOpen && (
+                      <div
+                        className="absolute left-0 top-full z-50 mt-1 w-80 max-w-[calc(100vw-2rem)] rounded-lg border p-3 text-sm shadow-lg"
+                        style={{
+                          borderColor: "var(--border)",
+                          background: "var(--surface)",
+                          color: "var(--text)",
+                        }}
                       >
-                        {telegramLinkCodeLoading ? "…" : t.profileTelegramLinkButton}
-                      </button>
-                      {telegramLinkCodeError && (
-                        <p className="text-xs text-red-600 dark:text-red-400">
-                          {telegramLinkCodeError}
-                        </p>
-                      )}
-                      {telegramLinkCode && (
-                        <div
-                          className="rounded-lg border p-4 space-y-2"
-                          style={{
-                            borderColor: "var(--border)",
-                            background: "var(--surface)",
-                          }}
-                        >
-                          <p className="text-sm" style={{ color: "var(--text)" }}>
-                            1. {t.profileTelegramLinkStep1}
-                            {telegramLinkCode.bot_link ? (
-                              <>
-                                {" "}
-                                <a
-                                  href={telegramLinkCode.bot_link}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="underline"
-                                >
-                                  @{telegramLinkCode.bot_username}
-                                </a>
-                              </>
-                            ) : null}
+                        {t.profileSlackWebhookHelpPopup.split("\n\n").map((para, i) => (
+                          <p key={i} className={i > 0 ? "mt-2" : ""}>
+                            {para}
                           </p>
-                          <p className="text-sm" style={{ color: "var(--text)" }}>
-                            2. {t.profileTelegramLinkStep2}:{" "}
-                            <strong className="font-mono text-lg tracking-wider">
-                              {telegramLinkCode.code}
-                            </strong>
-                          </p>
-                          <p className="text-xs text-slate-500 dark:text-slate-400">
-                            {t.profileTelegramLinkExpires}
-                          </p>
-                        </div>
-                      )}
-                      <p className="text-xs text-slate-500 dark:text-slate-400">
-                        {t.profileTelegramOrManual}
-                      </p>
-                      <input
-                        className="input"
-                        type="text"
-                        value={profileForm.telegram_chat_id}
-                        onChange={(event) =>
-                          setProfileForm((prev) => ({
-                            ...prev,
-                            telegram_chat_id: event.target.value,
-                          }))
-                        }
-                        placeholder={t.profileTelegramId}
-                      />
+                        ))}
+                      </div>
+                    )}
+                    <input
+                      className="input"
+                      type="url"
+                      value={profileForm.slack_webhook_url}
+                      onChange={(event) =>
+                        setProfileForm((prev) => ({
+                          ...prev,
+                          slack_webhook_url: event.target.value,
+                        }))
+                      }
+                      placeholder={t.profileSlackWebhookUrlPlaceholder}
+                    />
+                  </div>
+                </div>
                     </>
                   )}
-                </div>
-                <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={profileForm.show_account_balances}
-                    onChange={(event) =>
-                      setProfileForm((prev) => ({
-                        ...prev,
-                        show_account_balances: event.target.checked,
-                      }))
-                    }
-                    className="h-4 w-4"
-                  />
-                  <div className="flex-1">
-                    <span className="font-medium" style={{ color: "var(--text)" }}>
-                      {t.profileShowBalances}
-                    </span>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                      {t.profileShowBalancesHelp}
-                    </p>
-                  </div>
-                </label>
-                <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={profileForm.telegram_alerts_enabled}
-                    onChange={(event) =>
-                      setProfileForm((prev) => ({
-                        ...prev,
-                        telegram_alerts_enabled: event.target.checked,
-                      }))
-                    }
-                    className="h-4 w-4"
-                  />
-                  <div className="flex-1">
-                    <span className="font-medium" style={{ color: "var(--text)" }}>
-                      {t.profileTelegramAlerts}
-                    </span>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                      {t.profileTelegramAlertsHelp}
-                    </p>
-                  </div>
-                </label>
-                <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={profileForm.weekly_emails_enabled}
-                    onChange={(event) =>
-                      setProfileForm((prev) => ({
-                        ...prev,
-                        weekly_emails_enabled: event.target.checked,
-                      }))
-                    }
-                    className="h-4 w-4"
-                  />
-                  <div className="flex-1">
-                    <span className="font-medium" style={{ color: "var(--text)" }}>
-                      {t.profileWeeklyEmails}
-                    </span>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
-                      {t.profileWeeklyEmailsHelp}
-                    </p>
-                  </div>
-                </label>
+                  {profileTab === "alerts" && (
+                    <>
                 <div className="grid gap-2">
-                  <span className="font-medium" style={{ color: "var(--text)" }}>{t.profileApiTokens}</span>
+                  <span className="font-medium" style={{ color: "var(--text)" }}>{t.profileAlertsSection}</span>
+                  <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={profileForm.telegram_alerts_enabled}
+                      onChange={(event) =>
+                        setProfileForm((prev) => ({
+                          ...prev,
+                          telegram_alerts_enabled: event.target.checked,
+                        }))
+                      }
+                      className="h-4 w-4"
+                    />
+                    <div className="flex-1">
+                      <span className="font-medium" style={{ color: "var(--text)" }}>
+                        {t.profileTelegramAlerts}
+                      </span>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        {t.profileTelegramAlertsHelp}
+                      </p>
+                    </div>
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={profileForm.slack_alerts_enabled}
+                      onChange={(event) =>
+                        setProfileForm((prev) => ({
+                          ...prev,
+                          slack_alerts_enabled: event.target.checked,
+                        }))
+                      }
+                      className="h-4 w-4"
+                    />
+                    <div className="flex-1">
+                      <span className="font-medium" style={{ color: "var(--text)" }}>
+                        {t.profileSlackAlerts}
+                      </span>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        {t.profileSlackAlertsHelp}
+                      </p>
+                    </div>
+                  </label>
+                  <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={profileForm.weekly_emails_enabled}
+                      onChange={(event) =>
+                        setProfileForm((prev) => ({
+                          ...prev,
+                          weekly_emails_enabled: event.target.checked,
+                        }))
+                      }
+                      className="h-4 w-4"
+                    />
+                    <div className="flex-1">
+                      <span className="font-medium" style={{ color: "var(--text)" }}>
+                        {t.profileWeeklyEmails}
+                      </span>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        {t.profileWeeklyEmailsHelp}
+                      </p>
+                    </div>
+                  </label>
+                </div>
+                    </>
+                  )}
+                  {profileTab === "storage" && (
+                    <>
+                <div className="grid gap-2">
+                  <span className="font-medium" style={{ color: "var(--text)" }}>{t.profileStorageMode}</span>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <label
+                      className={`flex cursor-pointer flex-col gap-2 rounded-lg border p-4 transition-colors ${
+                        profileForm.storage_mode === "cloud"
+                          ? "border-blue-500 dark:border-blue-400"
+                          : "border-slate-200 dark:border-slate-700"
+                      }`}
+                      style={{
+                        background: profileForm.storage_mode === "cloud" ? "var(--primary-50)" : "var(--surface)",
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="storage_mode"
+                          checked={profileForm.storage_mode === "cloud"}
+                          onChange={() => setProfileForm((prev) => ({ ...prev, storage_mode: "cloud" }))}
+                          className="h-4 w-4"
+                        />
+                        <span className="font-medium" style={{ color: "var(--text)" }}>{t.profileStorageModeCloud}</span>
+                      </div>
+                      <p className="text-xs" style={{ color: "var(--text-secondary)" }}>{t.profileStorageModeCloudHelp}</p>
+                    </label>
+                    <label
+                      className={`flex cursor-pointer flex-col gap-2 rounded-lg border p-4 transition-colors ${
+                        profileForm.storage_mode === "local"
+                          ? "border-blue-500 dark:border-blue-400"
+                          : "border-slate-200 dark:border-slate-700"
+                      }`}
+                      style={{
+                        background: profileForm.storage_mode === "local" ? "var(--primary-50)" : "var(--surface)",
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="radio"
+                          name="storage_mode"
+                          checked={profileForm.storage_mode === "local"}
+                          onChange={() => setProfileForm((prev) => ({ ...prev, storage_mode: "local" }))}
+                          className="h-4 w-4"
+                        />
+                        <span className="font-medium" style={{ color: "var(--text)" }}>{t.profileStorageModeLocal}</span>
+                      </div>
+                      <p className="text-xs" style={{ color: "var(--text-secondary)" }}>{t.profileStorageModeLocalHelp}</p>
+                    </label>
+                  </div>
+                </div>
+                    </>
+                  )}
+                  {profileTab === "tokens" && (
+                    <>
+                <div className="grid gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium" style={{ color: "var(--text)" }}>{t.profileApiTokens}</span>
+                    <button
+                      type="button"
+                      className="inline-flex items-center justify-center p-2 rounded border transition-colors min-w-[2.25rem]"
+                      style={{
+                        background: "var(--surface-hover)",
+                        borderColor: "var(--border)",
+                        color: "var(--text)",
+                      }}
+                      title={t.profileApiTokenCreate}
+                      aria-label={t.profileApiTokenCreate}
+                      onClick={() => {
+                        setApiTokenCreateModal("form");
+                        setApiTokenCreateName("");
+                      }}
+                    >
+                      <i className="fa-solid fa-plus text-sm" aria-hidden />
+                    </button>
+                  </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400">{t.profileApiTokensHelp}</p>
                   {apiTokensLoading ? (
                     <p className="text-sm text-slate-500 dark:text-slate-400">Loading…</p>
@@ -6557,34 +7690,28 @@ function App() {
                           ) : (
                             <button
                               type="button"
-                              className="text-sm underline"
-                              style={{ color: "var(--text-secondary)" }}
-                              onClick={() => setApiTokenDeleteConfirm(tok.id)}
+                              className="inline-flex items-center justify-center p-2 rounded border transition-colors min-w-[2.25rem]"
+                              style={{
+                                background: "var(--surface-hover)",
+                                borderColor: "var(--border)",
+                                color: "var(--error)",
+                              }}
+                              title={t.profileApiTokenDelete}
                               aria-label={t.profileApiTokenDelete}
+                              onClick={() => setApiTokenDeleteConfirm(tok.id)}
                             >
-                              {t.profileApiTokenDelete}
+                              <i className="fa-solid fa-trash text-sm" aria-hidden />
                             </button>
                           )}
                         </li>
                       ))}
                     </ul>
                   )}
-                  <button
-                    type="button"
-                    className="btn secondary mt-1"
-                    onClick={() => {
-                      setApiTokenCreateModal("form");
-                      setApiTokenCreateName("");
-                    }}
-                  >
-                    {t.profileApiTokenCreate}
-                  </button>
                 </div>
-                <div>
-                  <span className="font-medium">{t.profileAdmin}:</span>{" "}
-                  {profile.is_admin ? "✓" : "—"}
+                    </>
+                  )}
                 </div>
-                <div className="flex justify-end gap-2">
+                <div className="flex justify-end gap-2 mt-4">
                   <button
                     type="button"
                     className="p-2 rounded-md border transition-colors"
@@ -6635,8 +7762,16 @@ function App() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="api-token-modal-title"
+            tabIndex={-1}
             onClick={(e) => {
               if (e.target === e.currentTarget) setApiTokenCreateModal("closed");
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Escape" || e.key === "Esc") {
+                e.preventDefault();
+                setApiTokenCreateModal("closed");
+                setApiTokenCreateName("");
+              }
             }}
           >
             <div className="modal-card max-w-md" onClick={(e) => e.stopPropagation()}>
@@ -6656,14 +7791,28 @@ function App() {
                   <div className="mt-6 flex justify-end gap-2">
                     <button
                       type="button"
-                      className="btn secondary"
+                      className="inline-flex items-center justify-center p-2 rounded border transition-colors min-w-[2.25rem]"
+                      style={{
+                        background: "var(--surface-hover)",
+                        borderColor: "var(--border)",
+                        color: "var(--text)",
+                      }}
+                      title={t.modalCancel}
+                      aria-label={t.modalCancel}
                       onClick={() => { setApiTokenCreateModal("closed"); setApiTokenCreateName(""); }}
                     >
-                      {t.modalCancel}
+                      <i className="fa-solid fa-xmark" aria-hidden />
                     </button>
                     <button
                       type="button"
-                      className="btn primary"
+                      className="inline-flex items-center justify-center p-2 rounded border transition-colors min-w-[2.25rem]"
+                      style={{
+                        background: "var(--primary)",
+                        borderColor: "var(--primary)",
+                        color: "white",
+                      }}
+                      title={t.profileApiTokenCreate}
+                      aria-label={t.profileApiTokenCreate}
                       disabled={!apiTokenCreateName.trim() || apiTokenCreateSubmitting}
                       onClick={async () => {
                         if (!apiToken || !apiTokenCreateName.trim()) return;
@@ -6684,7 +7833,11 @@ function App() {
                         }
                       }}
                     >
-                      {apiTokenCreateSubmitting ? "…" : t.profileApiTokenCreate}
+                      {apiTokenCreateSubmitting ? (
+                        <i className="fa-solid fa-spinner fa-spin" aria-hidden />
+                      ) : (
+                        <i className="fa-solid fa-check" aria-hidden />
+                      )}
                     </button>
                   </div>
                 </>
@@ -6785,6 +7938,44 @@ function App() {
               </ul>
             </div>
           </div>
+        ) : null}
+
+        {isAuthenticated && profile?.is_admin && apiToken && activeSection === "adminDashboard" ? (
+          <AdminDashboard
+            token={apiToken}
+            apiBase={apiBase}
+            t={{
+              metricsTitle: t.metricsTitle,
+              metricsUsers: t.metricsUsers,
+              metricsBanking: t.metricsBanking,
+              metricsRecurring: t.metricsRecurring,
+              metricsEngagement: t.metricsEngagement,
+              metricsTotalUsers: t.metricsTotalUsers,
+              metricsActiveUsers7d: t.metricsActiveUsers7d,
+              metricsActiveUsers30d: t.metricsActiveUsers30d,
+              metricsOnboardingCompleted: t.metricsOnboardingCompleted,
+              metricsUsersWithAccount: t.metricsUsersWithAccount,
+              metricsTotalAccounts: t.metricsTotalAccounts,
+              metricsTotalConnections: t.metricsTotalConnections,
+              metricsTotalTransactions: t.metricsTotalTransactions,
+              metricsAvgAccountsPerUser: t.metricsAvgAccountsPerUser,
+              metricsAvgTransactionsPerUser: t.metricsAvgTransactionsPerUser,
+              metricsTotalPatterns: t.metricsTotalPatterns,
+              metricsPatternsActive: t.metricsPatternsActive,
+              metricsPatternsSuggested: t.metricsPatternsSuggested,
+              metricsPatternsPaused: t.metricsPatternsPaused,
+              metricsPatternsAutoDetected: t.metricsPatternsAutoDetected,
+              metricsPatternsManual: t.metricsPatternsManual,
+              metricsPatternsMigrated: t.metricsPatternsMigrated,
+              metricsUsersWithPatterns: t.metricsUsersWithPatterns,
+              metricsAvgPatternsPerUser: t.metricsAvgPatternsPerUser,
+              metricsOccurrencesMatched: t.metricsOccurrencesMatched,
+              metricsTelegramEnabled: t.metricsTelegramEnabled,
+              metricsWeeklyEmailsEnabled: t.metricsWeeklyEmailsEnabled,
+              metricsLoading: t.metricsLoading,
+              metricsError: t.metricsError,
+            }}
+          />
         ) : null}
 
         {isAuthenticated && profile?.is_admin && apiToken && activeSection === "audit" ? (
@@ -6910,7 +8101,7 @@ function App() {
         ) : null}
 
         {activeSection === "home" && !isAuthenticated ? (
-          <section className="mx-auto max-w-6xl px-6 py-16">
+          <section className="mx-auto max-w-6xl px-6 pt-16 pb-4">
           <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
             <div>
               <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">
@@ -6946,6 +8137,12 @@ function App() {
                     {t.heroBody}
                   </p>
                 )}
+                <p className="mt-3 flex flex-wrap items-center gap-2 text-lg text-slate-600 dark:text-slate-300">
+                  <i className="fa-brands fa-telegram text-xl" aria-hidden style={{ color: "#0088cc" }} />
+                  <i className="fa-brands fa-slack text-xl" aria-hidden style={{ color: "#4A154B" }} />
+                  <i className="fa-solid fa-envelope text-xl" aria-hidden />
+                  <span>{t.heroAlerts}</span>
+                </p>
               </div>
               <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-6">
                 <button
@@ -6991,86 +8188,352 @@ function App() {
         ) : null}
 
         {activeSection === "home" && !isAuthenticated ? (
-          <section id="privacy-highlights" className="border-t border-slate-200 bg-slate-50 py-16 dark:border-slate-800 dark:bg-slate-950">
-          <div className="mx-auto max-w-6xl px-6">
-            <h2 className="text-center text-2xl font-bold text-slate-900 dark:text-slate-100 md:text-3xl">
-              {t.privacyHighlightsTitle}
-            </h2>
-            <div className="mx-auto mt-10 grid max-w-4xl gap-6 sm:grid-cols-2 lg:grid-cols-3">
-              <div className="flex gap-4 rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
-                  <i className="fa-solid fa-shield-halved"></i>
-                </span>
-                <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight1}</p>
-              </div>
-              <div className="flex gap-4 rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
-                  <i className="fa-solid fa-lock"></i>
-                </span>
-                <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight2}</p>
-              </div>
-              <div className="flex gap-4 rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
-                  <i className="fa-solid fa-certificate"></i>
-                </span>
-                <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight3}</p>
-              </div>
-              <div className="flex gap-4 rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
-                  <i className="fa-solid fa-key"></i>
-                </span>
-                <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight4}</p>
-              </div>
-              <div className="flex gap-4 rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
-                  <i className="fa-solid fa-server"></i>
-                </span>
-                <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight5}</p>
-              </div>
-              <div className="flex gap-4 rounded-lg border border-slate-200 bg-white p-5 dark:border-slate-700 dark:bg-slate-900">
-                <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
-                  <i className="fa-brands fa-github"></i>
-                </span>
-                <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight6}</p>
-              </div>
-            </div>
-          </div>
-          </section>
-        ) : null}
+          <section id="landing-carousel" className="border-t border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
+            <div className="w-full">
+              <div className="relative overflow-hidden border-t border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900" style={{ minHeight: "420px" }}>
+                {/* Carousel slides - order: 1 Privacidade, 2 Categories and Tags, 3 Analysis, 4 Os seus dados */}
+                <div
+                  className="flex transition-transform duration-300 ease-out"
+                  style={{ transform: `translateX(-${landingCarouselIndex * 100}%)` }}
+                >
+                  {/* Slide 1: Privacidade por design */}
+                  <div className="min-w-full shrink-0 px-6 py-8 md:px-10 md:py-10">
+                    <h2 className="text-center text-xl font-bold text-slate-900 dark:text-slate-100 md:text-2xl">
+                      {t.privacyHighlightsTitle}
+                    </h2>
+                    <div className="mx-auto mt-8 grid max-w-4xl gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      <div className="flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
+                          <i className="fa-solid fa-shield-halved text-sm"></i>
+                        </span>
+                        <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight1}</p>
+                      </div>
+                      <div className="flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
+                          <i className="fa-solid fa-lock text-sm"></i>
+                        </span>
+                        <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight2}</p>
+                      </div>
+                      <div className="flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
+                          <i className="fa-solid fa-certificate text-sm"></i>
+                        </span>
+                        <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight3}</p>
+                      </div>
+                      <div className="flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
+                          <i className="fa-solid fa-key text-sm"></i>
+                        </span>
+                        <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight4}</p>
+                      </div>
+                      <div className="flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
+                          <i className="fa-solid fa-server text-sm"></i>
+                        </span>
+                        <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight5}</p>
+                      </div>
+                      <div className="flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
+                          <i className="fa-brands fa-github text-sm"></i>
+                        </span>
+                        <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight6}</p>
+                      </div>
+                    </div>
+                  </div>
 
-        {activeSection === "home" && !isAuthenticated ? (
-          <section id="features" className="py-16">
-          <div className="mx-auto grid max-w-6xl gap-6 px-6 md:grid-cols-3">
-            <div className="card">
-              <i className="fa-solid fa-layer-group icon-lg icon-primary"></i>
-              <h3 className="card-title mt-4">{t.featureAccountsTitle}</h3>
-              <p className="card-description">
-                {t.featureAccountsBody}
-              </p>
+                  {/* Slide 2: Categories and Tags (2 cards) */}
+                  <div className="min-w-full shrink-0 px-6 py-8 md:px-10 md:py-10">
+                    <h2 className="text-center text-xl font-bold text-slate-900 dark:text-slate-100 md:text-2xl">
+                      {t.landingFeaturesCategoriesAndTagsTitle ?? "Categories and Tags"}
+                    </h2>
+                    <div className="mx-auto mt-8 grid max-w-3xl gap-4 sm:grid-cols-2">
+                      <div className="flex flex-col overflow-visible rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                        <div
+                          className="group relative h-44 w-full shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800"
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setFeaturePreviewSrc(isDark ? "/categories-dark.png" : "/categories.png")}
+                          onKeyDown={(e) => e.key === "Enter" && setFeaturePreviewSrc(isDark ? "/categories-dark.png" : "/categories.png")}
+                          onMouseEnter={() => {
+                            if (featurePreviewCloseTimeoutRef.current) {
+                              clearTimeout(featurePreviewCloseTimeoutRef.current);
+                              featurePreviewCloseTimeoutRef.current = null;
+                            }
+                            if (featurePreviewOpenTimeoutRef.current) {
+                              clearTimeout(featurePreviewOpenTimeoutRef.current);
+                              featurePreviewOpenTimeoutRef.current = null;
+                            }
+                            const src = isDark ? "/categories-dark.png" : "/categories.png";
+                            featurePreviewOpenTimeoutRef.current = setTimeout(() => setFeaturePreviewSrc(src), FEATURE_PREVIEW_HOVER_MS);
+                          }}
+                          onMouseLeave={() => {
+                            if (featurePreviewOpenTimeoutRef.current) {
+                              clearTimeout(featurePreviewOpenTimeoutRef.current);
+                              featurePreviewOpenTimeoutRef.current = null;
+                            }
+                            featurePreviewCloseTimeoutRef.current = setTimeout(() => setFeaturePreviewSrc(null), 200);
+                          }}
+                        >
+                          <img src={isDark ? "/categories-dark.png" : "/categories.png"} alt="" className="h-full w-full object-cover object-top" width={320} height={180} />
+                        </div>
+                        <h3 className="mt-3 text-base font-semibold text-slate-900 dark:text-slate-100">{t.settingsCategories}</h3>
+                        <p className="mt-1 flex-1 whitespace-pre-line text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.featureCategoriesBody}</p>
+                      </div>
+                      <div className="flex flex-col overflow-visible rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                        <div
+                          className="group relative h-44 w-full shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800"
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setFeaturePreviewSrc(isDark ? "/tags-dark.png" : "/tags.png")}
+                          onKeyDown={(e) => e.key === "Enter" && setFeaturePreviewSrc(isDark ? "/tags-dark.png" : "/tags.png")}
+                          onMouseEnter={() => {
+                            if (featurePreviewCloseTimeoutRef.current) {
+                              clearTimeout(featurePreviewCloseTimeoutRef.current);
+                              featurePreviewCloseTimeoutRef.current = null;
+                            }
+                            if (featurePreviewOpenTimeoutRef.current) {
+                              clearTimeout(featurePreviewOpenTimeoutRef.current);
+                              featurePreviewOpenTimeoutRef.current = null;
+                            }
+                            const src = isDark ? "/tags-dark.png" : "/tags.png";
+                            featurePreviewOpenTimeoutRef.current = setTimeout(() => setFeaturePreviewSrc(src), FEATURE_PREVIEW_HOVER_MS);
+                          }}
+                          onMouseLeave={() => {
+                            if (featurePreviewOpenTimeoutRef.current) {
+                              clearTimeout(featurePreviewOpenTimeoutRef.current);
+                              featurePreviewOpenTimeoutRef.current = null;
+                            }
+                            featurePreviewCloseTimeoutRef.current = setTimeout(() => setFeaturePreviewSrc(null), 200);
+                          }}
+                        >
+                          <img src={isDark ? "/tags-dark.png" : "/tags.png"} alt="" className="h-full w-full object-cover object-top" width={320} height={180} />
+                        </div>
+                        <h3 className="mt-3 text-base font-semibold text-slate-900 dark:text-slate-100">{t.settingsTags}</h3>
+                        <p className="mt-1 flex-1 whitespace-pre-line text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.featureTagsBody ?? "Assign multiple tags per transaction."}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Slide 3: Analysis (3 cards: Bancos, Análises claras, Vista de calendário) */}
+                  <div className="min-w-full shrink-0 px-6 py-8 md:px-10 md:py-10">
+                    <h2 className="text-center text-xl font-bold text-slate-900 dark:text-slate-100 md:text-2xl">
+                      {t.landingFeaturesAnalysisTitle ?? "Analysis"}
+                    </h2>
+                    <div className="mx-auto mt-8 grid max-w-4xl gap-4 sm:grid-cols-3">
+                      <div className="flex flex-col overflow-visible rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                        <div
+                          className="group relative h-44 w-full shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800"
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setFeaturePreviewSrc(isDark ? "/banks-dark.png" : "/banks.png")}
+                          onKeyDown={(e) => e.key === "Enter" && setFeaturePreviewSrc(isDark ? "/banks-dark.png" : "/banks.png")}
+                          onMouseEnter={() => {
+                            if (featurePreviewCloseTimeoutRef.current) {
+                              clearTimeout(featurePreviewCloseTimeoutRef.current);
+                              featurePreviewCloseTimeoutRef.current = null;
+                            }
+                            if (featurePreviewOpenTimeoutRef.current) {
+                              clearTimeout(featurePreviewOpenTimeoutRef.current);
+                              featurePreviewOpenTimeoutRef.current = null;
+                            }
+                            const src = isDark ? "/banks-dark.png" : "/banks.png";
+                            featurePreviewOpenTimeoutRef.current = setTimeout(() => setFeaturePreviewSrc(src), FEATURE_PREVIEW_HOVER_MS);
+                          }}
+                          onMouseLeave={() => {
+                            if (featurePreviewOpenTimeoutRef.current) {
+                              clearTimeout(featurePreviewOpenTimeoutRef.current);
+                              featurePreviewOpenTimeoutRef.current = null;
+                            }
+                            featurePreviewCloseTimeoutRef.current = setTimeout(() => setFeaturePreviewSrc(null), 200);
+                          }}
+                        >
+                          <img src={isDark ? "/banks-dark.png" : "/banks.png"} alt="" className="h-full w-full object-cover object-top" width={320} height={180} />
+                        </div>
+                        <h3 className="mt-3 text-base font-semibold text-slate-900 dark:text-slate-100">{t.featureBancosTitle ?? t.featureAccountsTitle}</h3>
+                        <p className="mt-1 flex-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.featureAccountsBody}</p>
+                      </div>
+                      <div className="flex flex-col overflow-visible rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                        <div
+                          className="group relative h-44 w-full shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800"
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setFeaturePreviewSrc(isDark ? "/insights-dark.jpeg" : "/insights.jpeg")}
+                          onKeyDown={(e) => e.key === "Enter" && setFeaturePreviewSrc(isDark ? "/insights-dark.jpeg" : "/insights.jpeg")}
+                          onMouseEnter={() => {
+                            if (featurePreviewCloseTimeoutRef.current) {
+                              clearTimeout(featurePreviewCloseTimeoutRef.current);
+                              featurePreviewCloseTimeoutRef.current = null;
+                            }
+                            if (featurePreviewOpenTimeoutRef.current) {
+                              clearTimeout(featurePreviewOpenTimeoutRef.current);
+                              featurePreviewOpenTimeoutRef.current = null;
+                            }
+                            const src = isDark ? "/insights-dark.jpeg" : "/insights.jpeg";
+                            featurePreviewOpenTimeoutRef.current = setTimeout(() => setFeaturePreviewSrc(src), FEATURE_PREVIEW_HOVER_MS);
+                          }}
+                          onMouseLeave={() => {
+                            if (featurePreviewOpenTimeoutRef.current) {
+                              clearTimeout(featurePreviewOpenTimeoutRef.current);
+                              featurePreviewOpenTimeoutRef.current = null;
+                            }
+                            featurePreviewCloseTimeoutRef.current = setTimeout(() => setFeaturePreviewSrc(null), 200);
+                          }}
+                        >
+                          <img src={isDark ? "/insights-dark.jpeg" : "/insights.jpeg"} alt="" className="h-full w-full object-cover object-top" width={320} height={180} />
+                        </div>
+                        <h3 className="mt-3 text-base font-semibold text-slate-900 dark:text-slate-100">{t.featureInsightsTitle}</h3>
+                        <p className="mt-1 flex-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                          {(t.featureInsightsBodyBullets ?? t.featureInsightsBody).split("\n").filter((line) => line.trim()).join(" ")}
+                        </p>
+                      </div>
+                      <div className="flex flex-col overflow-visible rounded-lg border border-slate-200 bg-slate-50 p-4 ring-2 ring-blue-500/50 dark:border-slate-700 dark:bg-slate-800/50 dark:ring-blue-400/50">
+                        <div
+                          className="group relative h-44 w-full shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800"
+                          role="button"
+                          tabIndex={0}
+                          onClick={() => setFeaturePreviewSrc(isDark ? "/calendar-dark.jpeg" : "/calendar.jpeg")}
+                          onKeyDown={(e) => e.key === "Enter" && setFeaturePreviewSrc(isDark ? "/calendar-dark.jpeg" : "/calendar.jpeg")}
+                          onMouseEnter={() => {
+                            if (featurePreviewCloseTimeoutRef.current) {
+                              clearTimeout(featurePreviewCloseTimeoutRef.current);
+                              featurePreviewCloseTimeoutRef.current = null;
+                            }
+                            if (featurePreviewOpenTimeoutRef.current) {
+                              clearTimeout(featurePreviewOpenTimeoutRef.current);
+                              featurePreviewOpenTimeoutRef.current = null;
+                            }
+                            const src = isDark ? "/calendar-dark.jpeg" : "/calendar.jpeg";
+                            featurePreviewOpenTimeoutRef.current = setTimeout(() => setFeaturePreviewSrc(src), FEATURE_PREVIEW_HOVER_MS);
+                          }}
+                          onMouseLeave={() => {
+                            if (featurePreviewOpenTimeoutRef.current) {
+                              clearTimeout(featurePreviewOpenTimeoutRef.current);
+                              featurePreviewOpenTimeoutRef.current = null;
+                            }
+                            featurePreviewCloseTimeoutRef.current = setTimeout(() => setFeaturePreviewSrc(null), 200);
+                          }}
+                        >
+                          <img src={isDark ? "/calendar-dark.jpeg" : "/calendar.jpeg"} alt="" className="h-full w-full object-cover object-top" width={320} height={180} />
+                        </div>
+                        <h3 className="mt-3 text-base font-semibold text-slate-900 dark:text-slate-100">
+                          <span className="inline-flex items-center gap-2">
+                            {t.featureCalendarTitle}
+                            <span className="inline-flex items-center gap-1 rounded-full border border-blue-400 bg-blue-500 px-2.5 py-0.5 text-xs font-semibold text-white shadow-sm dark:border-blue-500 dark:bg-blue-600" title={t.featureNewBadge}>
+                              {t.featureNewBadge}
+                            </span>
+                          </span>
+                        </h3>
+                        <p className="mt-1 flex-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.featureCalendarBody}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Slide 4: Os seus dados, a sua escolha */}
+                  <div className="min-w-full shrink-0 px-6 py-8 md:px-10 md:py-10">
+                    <h2 className="text-center text-xl font-bold text-slate-900 dark:text-slate-100 md:text-2xl">
+                      {t.landingStorageTitle}
+                    </h2>
+                    <p className="mx-auto mt-3 max-w-2xl text-center text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                      {t.landingStorageSubtitle}
+                    </p>
+                    <div className="mx-auto mt-8 grid max-w-3xl gap-4 sm:grid-cols-2">
+                      <div className="flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
+                          <i className="fa-solid fa-cloud-arrow-up text-sm"></i>
+                        </span>
+                        <div>
+                          <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{t.landingStorageCloudTitle}</h3>
+                          <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.landingStorageCloudBody}</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
+                          <i className="fa-solid fa-laptop text-sm"></i>
+                        </span>
+                        <div>
+                          <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{t.landingStorageLocalTitle}</h3>
+                          <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.landingStorageLocalBody}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Carousel controls - subtle */}
+                <div className="absolute bottom-2 left-0 right-0 flex items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setLandingCarouselIndex((i) => (i <= 0 ? 3 : i - 1))}
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                    aria-label="Previous slide"
+                  >
+                    <i className="fa-solid fa-chevron-left text-xs"></i>
+                  </button>
+                  {[0, 1, 2, 3].map((idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setLandingCarouselIndex(idx)}
+                      className={`h-1.5 w-1.5 rounded-full transition-colors ${
+                        landingCarouselIndex === idx
+                          ? "bg-slate-500 dark:bg-slate-400"
+                          : "bg-slate-300 hover:bg-slate-400 dark:bg-slate-600 dark:hover:bg-slate-500"
+                      }`}
+                      aria-label={`Slide ${idx + 1}`}
+                      aria-current={landingCarouselIndex === idx ? "true" : undefined}
+                    />
+                  ))}
+                  <button
+                    type="button"
+                    onClick={() => setLandingCarouselIndex((i) => (i >= 3 ? 0 : i + 1))}
+                    className="flex h-7 w-7 items-center justify-center rounded-full text-slate-400 transition hover:bg-slate-100 hover:text-slate-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-300"
+                    aria-label="Next slide"
+                  >
+                    <i className="fa-solid fa-chevron-right text-xs"></i>
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className="card">
-              <i className="fa-solid fa-robot icon-lg icon-primary"></i>
-              <h3 className="card-title mt-4">{t.featureCategoriesTitle}</h3>
-              <p className="card-description">
-                {t.featureCategoriesBody}
-              </p>
-            </div>
-            <div className="card">
-              <i className="fa-solid fa-chart-line icon-lg icon-primary"></i>
-              <h3 className="card-title mt-4">{t.featureInsightsTitle}</h3>
-              <p className="card-description mt-2">
-                {(t.featureInsightsBodyBullets ?? t.featureInsightsBody)
-                  .split("\n")
-                  .filter((line) => line.trim())
-                  .join(" ")}
-              </p>
-            </div>
-          </div>
           </section>
         ) : null}
 
           </>
         )}
+
+      {/* Feature image preview overlay (landing Funcionalidades) */}
+      {featurePreviewSrc ? (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Preview"
+          onMouseEnter={() => {
+            if (featurePreviewCloseTimeoutRef.current) {
+              clearTimeout(featurePreviewCloseTimeoutRef.current);
+              featurePreviewCloseTimeoutRef.current = null;
+            }
+          }}
+          onMouseLeave={() => setFeaturePreviewSrc(null)}
+          onClick={() => setFeaturePreviewSrc(null)}
+        >
+          <div
+            className="flex max-h-[90vh] max-w-[90vw] items-center justify-center"
+            onClick={(e) => e.stopPropagation()}
+            onMouseEnter={() => {
+              if (featurePreviewCloseTimeoutRef.current) {
+                clearTimeout(featurePreviewCloseTimeoutRef.current);
+                featurePreviewCloseTimeoutRef.current = null;
+              }
+            }}
+          >
+            <img
+              src={featurePreviewSrc}
+              alt=""
+              className="max-h-[90vh] max-w-full object-contain rounded-lg shadow-2xl"
+            />
+          </div>
+        </div>
+      ) : null}
 
       </main>
 
@@ -7091,7 +8554,7 @@ function App() {
             </a>
           </div>
           <div className="flex gap-4">
-            <a href="#" aria-label={t.footerGithub} className="hover:text-blue-600">
+            <a href="https://github.com/kal001/eurodata-public" target="_blank" rel="noopener noreferrer" aria-label={t.footerGithub} className="hover:text-blue-600">
               <i className="fa-brands fa-github"></i>
             </a>
             <a href="#" aria-label={t.footerLinkedin} className="hover:text-blue-600">
