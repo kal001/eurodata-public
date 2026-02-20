@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 type Category = { id: number; name: string };
 type Tag = { id: number; name: string };
@@ -13,6 +13,7 @@ type Translations = {
   settingsTagName: string;
   settingsExport: string;
   settingsImport: string;
+  settingsLoadSample: string;
   settingsExportImport: string;
   settingsExportSuccess: string;
   settingsImportSuccess: string;
@@ -26,15 +27,24 @@ type Translations = {
   profileSaveError: string;
 };
 
+type SettingsTab = "categories" | "tags";
+
+const SAMPLE_LANGUAGE_CODES = ["en", "pt", "es", "fr", "de", "it", "nl", "pl"] as const;
+
 type Props = {
   token: string;
   apiBase: string;
+  languageCode: string;
   t: Translations;
+  initialTab?: SettingsTab;
 };
 
-export default function Settings({ token, apiBase, t }: Props) {
+export default function Settings({ token, apiBase, languageCode, t, initialTab }: Props) {
+  const [activeTab, setActiveTab] = useState<SettingsTab>(initialTab ?? "categories");
   const [categories, setCategories] = useState<Category[]>([]);
   const [tags, setTags] = useState<Tag[]>([]);
+  const [loadSampleLoading, setLoadSampleLoading] = useState(false);
+  const [importLoading, setImportLoading] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [newTagName, setNewTagName] = useState("");
   const [editingCategory, setEditingCategory] = useState<Category | null>(null);
@@ -59,6 +69,10 @@ export default function Settings({ token, apiBase, t }: Props) {
     const response = await fetch(`${apiBase}/api/tags`, { headers });
     if (response.ok) setTags(await response.json());
   }, [apiBase, token]);
+
+  useEffect(() => {
+    if (initialTab) setActiveTab(initialTab);
+  }, [initialTab]);
 
   useEffect(() => {
     loadCategories();
@@ -208,9 +222,71 @@ export default function Settings({ token, apiBase, t }: Props) {
     const file = event.target.files?.[0];
     event.target.value = "";
     if (!file) return;
+    setImportLoading(true);
     try {
       const text = await file.text();
       const data = JSON.parse(text) as {
+        categories?: { name: string }[];
+        tags?: { name: string }[];
+      };
+      const catList = Array.isArray(data.categories) ? data.categories : [];
+      const tagList = Array.isArray(data.tags) ? data.tags : [];
+      if (catList.length === 0 && tagList.length === 0) {
+        setToast({ text: t.settingsImportFileInvalid, type: "error" });
+        setImportLoading(false);
+        return;
+      }
+      let created = 0;
+      let skipped = 0;
+      for (const item of catList) {
+        const name = (item?.name ?? "").toString().trim();
+        if (!name) continue;
+        const res = await fetch(`${apiBase}/api/categories`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ name }),
+        });
+        if (res.ok) created++;
+        else if (res.status === 409) skipped++;
+      }
+      for (const item of tagList) {
+        const name = (item?.name ?? "").toString().trim();
+        if (!name) continue;
+        const res = await fetch(`${apiBase}/api/tags`, {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ name }),
+        });
+        if (res.ok) created++;
+        else if (res.status === 409) skipped++;
+      }
+      await loadCategories();
+      await loadTags();
+      setToast({
+        text: t.settingsImportSuccess.replace("{created}", String(created)).replace("{skipped}", String(skipped)),
+        type: "success",
+      });
+    } catch {
+      setToast({ text: t.settingsImportError, type: "error" });
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const handleLoadSample = async () => {
+    const code = SAMPLE_LANGUAGE_CODES.includes(languageCode as (typeof SAMPLE_LANGUAGE_CODES)[number])
+      ? languageCode
+      : "en";
+    setLoadSampleLoading(true);
+    try {
+      const base = (typeof import.meta.env.BASE_URL === "string" ? import.meta.env.BASE_URL : "/").replace(/\/+$/, "");
+      const path = `${base ? base + "/" : "/"}samples/personalfinance-settings-${code}.json`;
+      const response = await fetch(path);
+      if (!response.ok) {
+        setToast({ text: t.settingsImportError, type: "error" });
+        return;
+      }
+      const data = (await response.json()) as {
         categories?: { name: string }[];
         tags?: { name: string }[];
       };
@@ -252,208 +328,286 @@ export default function Settings({ token, apiBase, t }: Props) {
       });
     } catch {
       setToast({ text: t.settingsImportError, type: "error" });
+    } finally {
+      setLoadSampleLoading(false);
     }
   };
+
+  const importInputRef = useRef<HTMLInputElement>(null);
 
   return (
     <section className="mx-auto max-w-3xl px-6 py-16">
       <div className="card">
-        <h2 className="card-title">{t.settingsTitle}</h2>
-        {toast ? (
-          <div className={`mb-4 rounded-lg p-3 text-sm ${toast.type === "success" ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"}`}>
-            {toast.text}
-          </div>
-        ) : null}
-
-        <h3 className="mt-6 text-lg font-semibold text-slate-700 dark:text-slate-200">
-          {t.settingsExportImport}
-        </h3>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <button type="button" className="btn-secondary btn-sm" onClick={handleExport}>
-            <i className="fa-solid fa-download mr-1.5"></i>
-            {t.settingsExport}
-          </button>
-          <label className="btn-secondary btn-sm cursor-pointer">
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="card-title">{t.settingsTitle}</h2>
+          <div className="flex items-center gap-1 shrink-0">
+            <button
+              type="button"
+              className="inline-flex items-center justify-center border rounded-md w-8 h-8 transition-colors hover:opacity-90"
+              style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-secondary)" }}
+              title={t.settingsExport}
+              aria-label={t.settingsExport}
+              onClick={handleExport}
+            >
+              <i className="fa-solid fa-download" aria-hidden />
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center justify-center border rounded-md w-8 h-8 transition-colors hover:opacity-90 disabled:opacity-50 disabled:pointer-events-none"
+              style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-secondary)" }}
+              title={t.settingsImport}
+              aria-label={t.settingsImport}
+              onClick={() => importInputRef.current?.click()}
+              disabled={importLoading}
+            >
+              <i className={`fa-solid fa-upload ${importLoading ? "fa-spin" : ""}`} aria-hidden />
+            </button>
+            <button
+              type="button"
+              className="inline-flex items-center justify-center border rounded-md w-8 h-8 transition-colors hover:opacity-90 disabled:opacity-50 disabled:pointer-events-none"
+              style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-secondary)" }}
+              title={t.settingsLoadSample}
+              aria-label={t.settingsLoadSample}
+              onClick={handleLoadSample}
+              disabled={loadSampleLoading}
+            >
+              <i className={`fa-solid fa-wand-magic-sparkles ${loadSampleLoading ? "fa-spin" : ""}`} aria-hidden />
+            </button>
             <input
+              ref={importInputRef}
               type="file"
               accept=".json,application/json"
               className="sr-only"
               onChange={handleImport}
+              aria-hidden
             />
-            <i className="fa-solid fa-upload mr-1.5"></i>
-            {t.settingsImport}
-          </label>
+          </div>
         </div>
+        {toast ? (
+          <div className={`mt-4 rounded-lg p-3 text-sm ${toast.type === "success" ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300"}`}>
+            {toast.text}
+          </div>
+        ) : null}
 
-        <h3 className="mt-8 text-lg font-semibold text-slate-700 dark:text-slate-200">
-          {t.settingsCategories}
-        </h3>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <input
-            className="input max-w-[200px]"
-            placeholder={t.settingsCategoryName}
-            value={newCategoryName}
-            onChange={(e) => setNewCategoryName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && createCategory()}
-          />
+        <nav
+          className="mt-4 flex flex-wrap gap-1 border-b mb-4"
+          style={{ borderColor: "var(--border)" }}
+          role="tablist"
+          aria-label={t.settingsTitle}
+        >
           <button
             type="button"
-            className="p-2 rounded-md border transition-colors"
+            role="tab"
+            aria-selected={activeTab === "categories"}
+            aria-controls="settings-categories-panel"
+            id="settings-categories-tab"
+            className="px-3 py-2 rounded-t text-sm font-medium transition-colors"
             style={{
-              background: "var(--surface-hover)",
-              borderColor: "var(--border)",
-              color: "var(--text)",
+              color: activeTab === "categories" ? "var(--primary)" : "var(--text-secondary)",
+              borderBottom: activeTab === "categories" ? "2px solid var(--primary)" : "2px solid transparent",
+              marginBottom: -1,
             }}
-            title={t.settingsAddCategory}
-            aria-label={t.settingsAddCategory}
-            onClick={createCategory}
+            onClick={() => setActiveTab("categories")}
           >
-            <i className="fa-solid fa-plus" />
+            {t.settingsCategories}
           </button>
-        </div>
-        <ul className="mt-2 space-y-1">
-          {categories.map((c) => (
-            <li
-              key={c.id}
-              className="flex items-center justify-between gap-2 rounded border border-slate-200 px-3 py-2 dark:border-slate-700"
-            >
-              {editingCategory?.id === c.id ? (
-                <>
-                  <input
-                    className="input flex-1"
-                    value={editCategoryValue}
-                    onChange={(e) => setEditCategoryValue(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && updateCategory()}
-                  />
-                  <button type="button" className="icon-button" onClick={updateCategory} title={t.modalConfirm}>
-                    <i className="fa-solid fa-check"></i>
-                  </button>
-                  <button
-                    type="button"
-                    className="icon-button"
-                    onClick={() => {
-                      setEditingCategory(null);
-                      setEditCategoryValue("");
-                    }}
-                    title={t.modalCancel}
-                  >
-                    <i className="fa-solid fa-xmark"></i>
-                  </button>
-                </>
-              ) : (
-                <>
-                  <span className="font-medium">{c.name}</span>
-                  <span className="flex gap-1">
-                    <button
-                      type="button"
-                      className="icon-button text-sm"
-                      onClick={() => {
-                        setEditingCategory(c);
-                        setEditCategoryValue(c.name);
-                      }}
-                      title={t.modalConfirm}
-                    >
-                      <i className="fa-solid fa-pen"></i>
-                    </button>
-                    <button
-                      type="button"
-                      className="icon-button text-sm danger"
-                      onClick={() => setConfirmDeleteCategory(c)}
-                      title={t.modalConfirm}
-                    >
-                      <i className="fa-solid fa-trash"></i>
-                    </button>
-                  </span>
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
-
-        <h3 className="mt-8 text-lg font-semibold text-slate-700 dark:text-slate-200">
-          {t.settingsTags}
-        </h3>
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <input
-            className="input max-w-[200px]"
-            placeholder={t.settingsTagName}
-            value={newTagName}
-            onChange={(e) => setNewTagName(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && createTag()}
-          />
           <button
             type="button"
-            className="p-2 rounded-md border transition-colors"
+            role="tab"
+            aria-selected={activeTab === "tags"}
+            aria-controls="settings-tags-panel"
+            id="settings-tags-tab"
+            className="px-3 py-2 rounded-t text-sm font-medium transition-colors"
             style={{
-              background: "var(--surface-hover)",
-              borderColor: "var(--border)",
-              color: "var(--text)",
+              color: activeTab === "tags" ? "var(--primary)" : "var(--text-secondary)",
+              borderBottom: activeTab === "tags" ? "2px solid var(--primary)" : "2px solid transparent",
+              marginBottom: -1,
             }}
-            title={t.settingsAddTag}
-            aria-label={t.settingsAddTag}
-            onClick={createTag}
+            onClick={() => setActiveTab("tags")}
           >
-            <i className="fa-solid fa-plus" />
+            {t.settingsTags}
           </button>
-        </div>
-        <ul className="mt-2 space-y-1">
-          {tags.map((tag) => (
-            <li
-              key={tag.id}
-              className="flex items-center justify-between gap-2 rounded border border-slate-200 px-3 py-2 dark:border-slate-700"
+        </nav>
+
+        <div
+          id="settings-categories-panel"
+          role="tabpanel"
+          aria-labelledby="settings-categories-tab"
+          hidden={activeTab !== "categories"}
+          className="pt-4"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              className="input max-w-[200px]"
+              placeholder={t.settingsCategoryName}
+              value={newCategoryName}
+              onChange={(e) => setNewCategoryName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && createCategory()}
+            />
+            <button
+              type="button"
+              className="p-2 rounded-md border transition-colors"
+              style={{
+                background: "var(--surface-hover)",
+                borderColor: "var(--border)",
+                color: "var(--text)",
+              }}
+              title={t.settingsAddCategory}
+              aria-label={t.settingsAddCategory}
+              onClick={createCategory}
             >
-              {editingTag?.id === tag.id ? (
-                <>
-                  <input
-                    className="input flex-1"
-                    value={editTagValue}
-                    onChange={(e) => setEditTagValue(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && updateTag()}
-                  />
-                  <button type="button" className="icon-button" onClick={updateTag} title={t.modalConfirm}>
-                    <i className="fa-solid fa-check"></i>
-                  </button>
-                  <button
-                    type="button"
-                    className="icon-button"
-                    onClick={() => {
-                      setEditingTag(null);
-                      setEditTagValue("");
-                    }}
-                    title={t.modalCancel}
-                  >
-                    <i className="fa-solid fa-xmark"></i>
-                  </button>
-                </>
-              ) : (
-                <>
-                  <span className="font-medium">{tag.name}</span>
-                  <span className="flex gap-1">
+              <i className="fa-solid fa-plus" />
+            </button>
+          </div>
+          <ul className="mt-2 space-y-1">
+            {categories.map((c) => (
+              <li
+                key={c.id}
+                className="flex items-center justify-between gap-2 rounded border border-slate-200 px-3 py-2 dark:border-slate-700"
+              >
+                {editingCategory?.id === c.id ? (
+                  <>
+                    <input
+                      className="input flex-1"
+                      value={editCategoryValue}
+                      onChange={(e) => setEditCategoryValue(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && updateCategory()}
+                    />
+                    <button type="button" className="icon-button" onClick={updateCategory} title={t.modalConfirm}>
+                      <i className="fa-solid fa-check"></i>
+                    </button>
                     <button
                       type="button"
-                      className="icon-button text-sm"
+                      className="icon-button"
                       onClick={() => {
-                        setEditingTag(tag);
-                        setEditTagValue(tag.name);
+                        setEditingCategory(null);
+                        setEditCategoryValue("");
                       }}
-                      title={t.modalConfirm}
+                      title={t.modalCancel}
                     >
-                      <i className="fa-solid fa-pen"></i>
+                      <i className="fa-solid fa-xmark"></i>
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <span className="font-medium">{c.name}</span>
+                    <span className="flex gap-1">
+                      <button
+                        type="button"
+                        className="icon-button text-sm"
+                        onClick={() => {
+                          setEditingCategory(c);
+                          setEditCategoryValue(c.name);
+                        }}
+                        title={t.modalConfirm}
+                      >
+                        <i className="fa-solid fa-pen"></i>
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-button text-sm danger"
+                        onClick={() => setConfirmDeleteCategory(c)}
+                        title={t.modalConfirm}
+                      >
+                        <i className="fa-solid fa-trash"></i>
+                      </button>
+                    </span>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div
+          id="settings-tags-panel"
+          role="tabpanel"
+          aria-labelledby="settings-tags-tab"
+          hidden={activeTab !== "tags"}
+          className="pt-4"
+        >
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              className="input max-w-[200px]"
+              placeholder={t.settingsTagName}
+              value={newTagName}
+              onChange={(e) => setNewTagName(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && createTag()}
+            />
+            <button
+              type="button"
+              className="p-2 rounded-md border transition-colors"
+              style={{
+                background: "var(--surface-hover)",
+                borderColor: "var(--border)",
+                color: "var(--text)",
+              }}
+              title={t.settingsAddTag}
+              aria-label={t.settingsAddTag}
+              onClick={createTag}
+            >
+              <i className="fa-solid fa-plus" />
+            </button>
+          </div>
+          <ul className="mt-2 space-y-1">
+            {tags.map((tag) => (
+              <li
+                key={tag.id}
+                className="flex items-center justify-between gap-2 rounded border border-slate-200 px-3 py-2 dark:border-slate-700"
+              >
+                {editingTag?.id === tag.id ? (
+                  <>
+                    <input
+                      className="input flex-1"
+                      value={editTagValue}
+                      onChange={(e) => setEditTagValue(e.target.value)}
+                      onKeyDown={(e) => e.key === "Enter" && updateTag()}
+                    />
+                    <button type="button" className="icon-button" onClick={updateTag} title={t.modalConfirm}>
+                      <i className="fa-solid fa-check"></i>
                     </button>
                     <button
                       type="button"
-                      className="icon-button text-sm danger"
-                      onClick={() => setConfirmDeleteTag(tag)}
-                      title={t.modalConfirm}
+                      className="icon-button"
+                      onClick={() => {
+                        setEditingTag(null);
+                        setEditTagValue("");
+                      }}
+                      title={t.modalCancel}
                     >
-                      <i className="fa-solid fa-trash"></i>
+                      <i className="fa-solid fa-xmark"></i>
                     </button>
-                  </span>
-                </>
-              )}
-            </li>
-          ))}
-        </ul>
+                  </>
+                ) : (
+                  <>
+                    <span className="font-medium">{tag.name}</span>
+                    <span className="flex gap-1">
+                      <button
+                        type="button"
+                        className="icon-button text-sm"
+                        onClick={() => {
+                          setEditingTag(tag);
+                          setEditTagValue(tag.name);
+                        }}
+                        title={t.modalConfirm}
+                      >
+                        <i className="fa-solid fa-pen"></i>
+                      </button>
+                      <button
+                        type="button"
+                        className="icon-button text-sm danger"
+                        onClick={() => setConfirmDeleteTag(tag)}
+                        title={t.modalConfirm}
+                      >
+                        <i className="fa-solid fa-trash"></i>
+                      </button>
+                    </span>
+                  </>
+                )}
+              </li>
+            ))}
+          </ul>
+        </div>
       </div>
 
       {confirmDeleteCategory ? (

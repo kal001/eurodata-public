@@ -1,0 +1,8 @@
+# Standard robots.txt - no non-standard directives (e.g. Content-Signal).
+# Served from the app so the origin returns 200 with Content-Type: text/plain.
+# If using Cloudflare "Managed robots.txt", consider turning it off here so
+# this file is served as-is and Lighthouse stays happy; otherwise Cloudflare
+# may prepend its block (including Content-Signal) which triggers parser warnings.
+
+User-agent: *
+Allow: /

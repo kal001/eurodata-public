@@ -58,6 +58,8 @@ type Props = {
   apiBase: string;
   token: string;
   showBalances?: boolean;
+  hasSubscriptionAccess?: boolean;
+  onSubscriptionRequired?: () => void;
   t: {
     onboardingTitle: string;
     onboardingBody: string;
@@ -152,7 +154,7 @@ const countries = [
   { code: "IE", names: { en: "Ireland", pt: "Irlanda", es: "Irlanda", fr: "Irlande" } },
 ];
 
-export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, token, showBalances = true }: Props) {
+export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, token, showBalances = true, hasSubscriptionAccess = true, onSubscriptionRequired }: Props) {
   const [country, setCountry] = useState("PT");
   const [banks, setBanks] = useState<Bank[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -315,6 +317,7 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
   );
 
   const fetchAccounts = useCallback(async () => {
+    if (!token) return;
     const response = await fetch(`${apiBase}/api/accounts?_t=${Date.now()}`, {
       headers,
       cache: "no-store",
@@ -322,7 +325,7 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
     if (response.ok) {
       setAccounts(await response.json());
     }
-  }, [apiBase, headers]);
+  }, [apiBase, headers, token]);
 
   useEffect(() => {
     fetchAccounts();
@@ -345,10 +348,12 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
   }, [accounts]);
 
   useEffect(() => {
-    if (logoEditAccountId == null) {
-      setLogoEditBanks([]);
-      setLogoEditInstitutionName("");
-      setLogoEditSelectedBankId("");
+    if (logoEditAccountId == null || !token) {
+      if (logoEditAccountId == null) {
+        setLogoEditBanks([]);
+        setLogoEditInstitutionName("");
+        setLogoEditSelectedBankId("");
+      }
       return;
     }
     const account = accounts.find((a) => a.id === logoEditAccountId);
@@ -373,9 +378,13 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
         }
       })
       .catch(() => setLogoEditBanks([]));
-  }, [logoEditAccountId, accounts, apiBase]);
+  }, [logoEditAccountId, accounts, apiBase, headers, token]);
 
   useEffect(() => {
+    if (!token) {
+      setBanksLoading(false);
+      return;
+    }
     const loadBanks = async () => {
       setBanksLoading(true);
       const response = await fetch(`${apiBase}/api/banks?country=${country}`, {
@@ -396,7 +405,7 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
       setBanksLoading(false);
     };
     loadBanks();
-  }, [apiBase, country, headers]);
+  }, [apiBase, country, headers, token]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -404,7 +413,7 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
       params.get("reference") ??
       params.get("ref") ??
       window.localStorage.getItem("pf_bank_reference");
-    if (!reference) return;
+    if (!reference || !token) return;
     const complete = async () => {
       const completeRes = await fetch(`${apiBase}/api/banks/requisition/complete?reference=${reference}`, {
         method: "POST",
@@ -422,10 +431,14 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
       window.history.replaceState({}, "", newUrl);
     };
     complete();
-  }, [apiBase, fetchAccounts, headers]);
+  }, [apiBase, fetchAccounts, headers, token]);
 
   const startConnection = async (bank: Bank) => {
     if (isRedirecting) return;
+    if (hasSubscriptionAccess === false && onSubscriptionRequired) {
+      onSubscriptionRequired();
+      return;
+    }
     const response = await fetch(`${apiBase}/api/banks/requisition`, {
       method: "POST",
       headers,
@@ -443,6 +456,8 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
         setIsRedirecting(true);
         window.location.href = data.link;
       }
+    } else if (response.status === 403 && onSubscriptionRequired) {
+      onSubscriptionRequired();
     } else if (response.status === 429) {
       setToast({ text: t.gocardlessRateLimitExceeded, type: "warning" });
     }
@@ -922,11 +937,11 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
                         setPdfImportError(null);
                         setPdfImportLoading(true);
                         try {
-                          const parsed: Array<{ bank_info: Record<string, unknown>; transactions: unknown[] }> = [];
+                          const jobIds: string[] = [];
                           for (const file of pdfImportFiles) {
                             const form = new FormData();
                             form.append("file", file);
-                            const r = await fetch(`${apiBase}/api/statements/parse`, {
+                            const r = await fetch(`${apiBase}/api/statements/parse-async`, {
                               method: "POST",
                               headers: { Authorization: `Bearer ${token}` },
                               body: form,
@@ -936,7 +951,36 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
                               throw new Error(err.detail || r.statusText || (t.importStatementParseFailed ?? "Analysis failed"));
                             }
                             const data = await r.json();
-                            parsed.push({ bank_info: data.bank_info || {}, transactions: data.transactions || [] });
+                            if (data.job_id) jobIds.push(data.job_id);
+                          }
+                          const resultsByIndex: Array<{ bank_info: Record<string, unknown>; transactions: unknown[] } | null> = jobIds.map(() => null);
+                          const pollIntervalMs = 2500;
+                          const maxWaitMs = 12 * 60 * 1000;
+                          const started = Date.now();
+                          while (resultsByIndex.some((r) => r === null) && Date.now() - started < maxWaitMs) {
+                            for (let i = 0; i < jobIds.length; i++) {
+                              if (resultsByIndex[i] !== null) continue;
+                              const statusRes = await fetch(`${apiBase}/api/statements/parse/status/${jobIds[i]}`, {
+                                headers: { Authorization: `Bearer ${token}` },
+                              });
+                              if (!statusRes.ok) continue;
+                              const statusData = await statusRes.json();
+                              if (statusData.status === "completed" && statusData.result) {
+                                resultsByIndex[i] = {
+                                  bank_info: (statusData.result.bank_info as Record<string, unknown>) || {},
+                                  transactions: (statusData.result.transactions as unknown[]) || [],
+                                };
+                              } else if (statusData.status === "failed") {
+                                throw new Error(statusData.error || (t.importStatementParseFailed ?? "Analysis failed"));
+                              }
+                            }
+                            if (resultsByIndex.some((r) => r === null)) {
+                              await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+                            }
+                          }
+                          const parsed = resultsByIndex.filter((r): r is { bank_info: Record<string, unknown>; transactions: unknown[] } => r !== null);
+                          if (parsed.length !== jobIds.length) {
+                            throw new Error(t.importStatementParseFailed ?? "Analysis timed out");
                           }
                           setPdfImportParsed(parsed);
                           const first = parsed[0]?.bank_info as Record<string, unknown> | undefined;
@@ -1264,6 +1308,10 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
                 aria-label={t.importReviewImport ?? "Import"}
                 disabled={pdfImportLoading}
                 onClick={async () => {
+                  if (pdfImportReviewAction === "create" && hasSubscriptionAccess === false && onSubscriptionRequired) {
+                    onSubscriptionRequired();
+                    return;
+                  }
                   setPdfImportError(null);
                   setPdfImportLoading(true);
                   try {
@@ -1318,7 +1366,7 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
                   }
                 }}
               >
-                <i className="fa-solid fa-file-import" />
+                <i className={`fa-solid fa-file-import ${pdfImportLoading ? "fa-spin" : ""}`} />
               </button>
             </div>
           </div>
@@ -1421,7 +1469,12 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
           <h3 className="card-title m-0">{t.onboardingAccountsTitle}</h3>
           <button
             type="button"
-            className="btn-secondary btn-sm flex items-center gap-2"
+            className="inline-flex items-center justify-center p-2 rounded border transition-colors min-w-[2.25rem]"
+            style={{
+              borderColor: "var(--border)",
+              background: "var(--surface-hover)",
+              color: "var(--text)",
+            }}
             onClick={() => {
               setPdfImportOpen(true);
               setPdfImportPreSelectAccountId(null);
@@ -1435,8 +1488,7 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
             title={t.importStatementTitle ?? "Import statement (PDF)"}
             aria-label={t.importStatementTitle ?? "Import statement (PDF)"}
           >
-            <i className="fa-solid fa-file-import" />
-            <span>{t.importStatementTitle ?? "Import statement (PDF)"}</span>
+            <i className="fa-solid fa-file-import text-sm" aria-hidden />
           </button>
         </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2">

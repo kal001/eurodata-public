@@ -1,13 +1,43 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAuth0 } from "@auth0/auth0-react";
-import AdminDashboard from "./components/AdminDashboard";
-import AdminUsers from "./components/AdminUsers";
-import Audit from "./components/Audit";
-import Insights from "./components/Insights";
-import Onboarding from "./components/Onboarding";
-import PrivacyPolicy from "./components/PrivacyPolicy";
-import RecurringTransactions from "./components/RecurringTransactions";
-import Settings from "./components/Settings";
+import { translationsDe } from "./translations/de";
+import { translationsIt } from "./translations/it";
+import { translationsNl } from "./translations/nl";
+import { translationsPl } from "./translations/pl";
+const LazyAdminDashboard = lazy(() => import("./components/AdminDashboard"));
+const LazyAdminUsers = lazy(() => import("./components/AdminUsers"));
+const LazyAudit = lazy(() => import("./components/Audit"));
+const LazyInsights = lazy(() => import("./components/Insights"));
+const LazyOnboarding = lazy(() => import("./components/Onboarding"));
+const LazyPrivacyPolicy = lazy(() => import("./components/PrivacyPolicy"));
+const LazyRecurringTransactions = lazy(() => import("./components/RecurringTransactions"));
+const LazySettings = lazy(() => import("./components/Settings"));
+import OnboardingWizard from "./components/OnboardingWizard";
+import type { OnboardingStepId } from "./components/OnboardingWizard";
+
+const SectionFallback = () => <div className="min-h-[120px] flex items-center justify-center text-slate-500 dark:text-slate-400" aria-hidden>Loading…</div>;
+import {
+  localTransactionsClear,
+  localTransactionsExportCSV,
+  localTransactionsExportJSON,
+  localTransactionsExportOFX,
+  buildOFXFromTransactions,
+  localTransactionsGetAll,
+  localTransactionsImportFromCSV,
+  localTransactionsImportFromJSON,
+  localTransactionsImportFromOFX,
+  localTransactionsMergeFromFetch,
+  parseCSVToImportPayload,
+  parseOFXToImportPayload,
+  downloadBlob,
+  isLocalDataEncrypted,
+  isLocalDataUnlocked,
+  setLocalEncryptionKey,
+  clearLocalEncryptionKey,
+  enableLocalEncryption,
+  restoreLocalEncryptionFromSession,
+} from "./services/localTransactions";
+import type { LocalTransaction } from "./services/localTransactions";
 import { getAccountColor } from "./utils/accountColors";
 
 const languages = [
@@ -15,37 +45,41 @@ const languages = [
   { code: "pt", label: "Português" },
   { code: "es", label: "Español" },
   { code: "fr", label: "Français" },
+  { code: "de", label: "Deutsch" },
+  { code: "it", label: "Italiano" },
+  { code: "nl", label: "Nederlands" },
+  { code: "pl", label: "Polski" },
 ];
 
 // EU countries (ISO 3166-1 alpha-2), sorted by English name
 const countryOptions = [
-  { code: "AT", names: { en: "Austria", pt: "Áustria", es: "Austria", fr: "Autriche" } },
-  { code: "BE", names: { en: "Belgium", pt: "Bélgica", es: "Bélgica", fr: "Belgique" } },
-  { code: "BG", names: { en: "Bulgaria", pt: "Bulgária", es: "Bulgaria", fr: "Bulgarie" } },
-  { code: "HR", names: { en: "Croatia", pt: "Croácia", es: "Croacia", fr: "Croatie" } },
-  { code: "CY", names: { en: "Cyprus", pt: "Chipre", es: "Chipre", fr: "Chypre" } },
-  { code: "CZ", names: { en: "Czech Republic", pt: "República Checa", es: "República Checa", fr: "République tchèque" } },
-  { code: "DK", names: { en: "Denmark", pt: "Dinamarca", es: "Dinamarca", fr: "Danemark" } },
-  { code: "EE", names: { en: "Estonia", pt: "Estónia", es: "Estonia", fr: "Estonie" } },
-  { code: "FI", names: { en: "Finland", pt: "Finlândia", es: "Finlandia", fr: "Finlande" } },
-  { code: "FR", names: { en: "France", pt: "França", es: "Francia", fr: "France" } },
-  { code: "DE", names: { en: "Germany", pt: "Alemanha", es: "Alemania", fr: "Allemagne" } },
-  { code: "GR", names: { en: "Greece", pt: "Grécia", es: "Grecia", fr: "Grèce" } },
-  { code: "HU", names: { en: "Hungary", pt: "Hungria", es: "Hungría", fr: "Hongrie" } },
-  { code: "IE", names: { en: "Ireland", pt: "Irlanda", es: "Irlanda", fr: "Irlande" } },
-  { code: "IT", names: { en: "Italy", pt: "Itália", es: "Italia", fr: "Italie" } },
-  { code: "LV", names: { en: "Latvia", pt: "Letónia", es: "Letonia", fr: "Lettonie" } },
-  { code: "LT", names: { en: "Lithuania", pt: "Lituânia", es: "Lituania", fr: "Lituanie" } },
-  { code: "LU", names: { en: "Luxembourg", pt: "Luxemburgo", es: "Luxemburgo", fr: "Luxembourg" } },
-  { code: "MT", names: { en: "Malta", pt: "Malta", es: "Malta", fr: "Malte" } },
-  { code: "NL", names: { en: "Netherlands", pt: "Países Baixos", es: "Países Bajos", fr: "Pays-Bas" } },
-  { code: "PL", names: { en: "Poland", pt: "Polónia", es: "Polonia", fr: "Pologne" } },
-  { code: "PT", names: { en: "Portugal", pt: "Portugal", es: "Portugal", fr: "Portugal" } },
-  { code: "RO", names: { en: "Romania", pt: "Roménia", es: "Rumania", fr: "Roumanie" } },
-  { code: "SK", names: { en: "Slovakia", pt: "Eslováquia", es: "Eslovaquia", fr: "Slovaquie" } },
-  { code: "SI", names: { en: "Slovenia", pt: "Eslovénia", es: "Eslovenia", fr: "Slovénie" } },
-  { code: "ES", names: { en: "Spain", pt: "Espanha", es: "España", fr: "Espagne" } },
-  { code: "SE", names: { en: "Sweden", pt: "Suécia", es: "Suecia", fr: "Suède" } },
+  { code: "AT", names: { en: "Austria", pt: "Áustria", es: "Austria", fr: "Autriche", de: "Österreich", it: "Austria", nl: "Oostenrijk", pl: "Austria" } },
+  { code: "BE", names: { en: "Belgium", pt: "Bélgica", es: "Bélgica", fr: "Belgique", de: "Belgien", it: "Belgio", nl: "België", pl: "Belgia" } },
+  { code: "BG", names: { en: "Bulgaria", pt: "Bulgária", es: "Bulgaria", fr: "Bulgarie", de: "Bulgarien", it: "Bulgaria", nl: "Bulgarije", pl: "Bułgaria" } },
+  { code: "HR", names: { en: "Croatia", pt: "Croácia", es: "Croacia", fr: "Croatie", de: "Kroatien", it: "Croazia", nl: "Kroatië", pl: "Chorwacja" } },
+  { code: "CY", names: { en: "Cyprus", pt: "Chipre", es: "Chipre", fr: "Chypre", de: "Zypern", it: "Cipro", nl: "Cyprus", pl: "Cypr" } },
+  { code: "CZ", names: { en: "Czech Republic", pt: "República Checa", es: "República Checa", fr: "République tchèque", de: "Tschechien", it: "Repubblica Ceca", nl: "Tsjechië", pl: "Czechy" } },
+  { code: "DK", names: { en: "Denmark", pt: "Dinamarca", es: "Dinamarca", fr: "Danemark", de: "Dänemark", it: "Danimarca", nl: "Denemarken", pl: "Dania" } },
+  { code: "EE", names: { en: "Estonia", pt: "Estónia", es: "Estonia", fr: "Estonie", de: "Estland", it: "Estonia", nl: "Estland", pl: "Estonia" } },
+  { code: "FI", names: { en: "Finland", pt: "Finlândia", es: "Finlandia", fr: "Finlande", de: "Finnland", it: "Finlandia", nl: "Finland", pl: "Finlandia" } },
+  { code: "FR", names: { en: "France", pt: "França", es: "Francia", fr: "France", de: "Frankreich", it: "Francia", nl: "Frankrijk", pl: "Francja" } },
+  { code: "DE", names: { en: "Germany", pt: "Alemanha", es: "Alemania", fr: "Allemagne", de: "Deutschland", it: "Germania", nl: "Duitsland", pl: "Niemcy" } },
+  { code: "GR", names: { en: "Greece", pt: "Grécia", es: "Grecia", fr: "Grèce", de: "Griechenland", it: "Grecia", nl: "Griekenland", pl: "Grecja" } },
+  { code: "HU", names: { en: "Hungary", pt: "Hungria", es: "Hungría", fr: "Hongrie", de: "Ungarn", it: "Ungheria", nl: "Hongarije", pl: "Węgry" } },
+  { code: "IE", names: { en: "Ireland", pt: "Irlanda", es: "Irlanda", fr: "Irlande", de: "Irland", it: "Irlanda", nl: "Ierland", pl: "Irlandia" } },
+  { code: "IT", names: { en: "Italy", pt: "Itália", es: "Italia", fr: "Italie", de: "Italien", it: "Italia", nl: "Italië", pl: "Włochy" } },
+  { code: "LV", names: { en: "Latvia", pt: "Letónia", es: "Letonia", fr: "Lettonie", de: "Lettland", it: "Lettonia", nl: "Letland", pl: "Łotwa" } },
+  { code: "LT", names: { en: "Lithuania", pt: "Lituânia", es: "Lituania", fr: "Lituanie", de: "Litauen", it: "Lituania", nl: "Litouwen", pl: "Litwa" } },
+  { code: "LU", names: { en: "Luxembourg", pt: "Luxemburgo", es: "Luxemburgo", fr: "Luxembourg", de: "Luxemburg", it: "Lussemburgo", nl: "Luxemburg", pl: "Luksemburg" } },
+  { code: "MT", names: { en: "Malta", pt: "Malta", es: "Malta", fr: "Malte", de: "Malta", it: "Malta", nl: "Malta", pl: "Malta" } },
+  { code: "NL", names: { en: "Netherlands", pt: "Países Baixos", es: "Países Bajos", fr: "Pays-Bas", de: "Niederlande", it: "Paesi Bassi", nl: "Nederland", pl: "Holandia" } },
+  { code: "PL", names: { en: "Poland", pt: "Polónia", es: "Polonia", fr: "Pologne", de: "Polen", it: "Polonia", nl: "Polen", pl: "Polska" } },
+  { code: "PT", names: { en: "Portugal", pt: "Portugal", es: "Portugal", fr: "Portugal", de: "Portugal", it: "Portogallo", nl: "Portugal", pl: "Portugalia" } },
+  { code: "RO", names: { en: "Romania", pt: "Roménia", es: "Rumania", fr: "Roumanie", de: "Rumänien", it: "Romania", nl: "Roemenië", pl: "Rumunia" } },
+  { code: "SK", names: { en: "Slovakia", pt: "Eslováquia", es: "Eslovaquia", fr: "Slovaquie", de: "Slowakei", it: "Slovacchia", nl: "Slowakije", pl: "Słowacja" } },
+  { code: "SI", names: { en: "Slovenia", pt: "Eslovénia", es: "Eslovenia", fr: "Slovénie", de: "Slowenien", it: "Slovenia", nl: "Slovenië", pl: "Słowenia" } },
+  { code: "ES", names: { en: "Spain", pt: "Espanha", es: "España", fr: "Espagne", de: "Spanien", it: "Spagna", nl: "Spanje", pl: "Hiszpania" } },
+  { code: "SE", names: { en: "Sweden", pt: "Suécia", es: "Suecia", fr: "Suède", de: "Schweden", it: "Svezia", nl: "Zweden", pl: "Szwecja" } },
 ];
 
 const translations = {
@@ -59,7 +93,7 @@ const translations = {
     heroEyebrow: "Privacy-first · Pan-European",
     heroTitle: "One app for all your bank accounts. Your data stays yours.",
     heroBody:
-      "Connect banks and cards across Europe. We never see or sell your banking data—it is stored for your access only, encrypted, with bank-grade providers. Servers in Germany. Open-source client you can inspect on GitHub.",
+      "Connect banks and cards across Europe.\nWe never see or sell your banking data—it is stored for you only, encrypted, with bank-grade providers. Servers in Germany. Open-source client you can inspect on GitHub.\n\nAssign categories to transactions automatically. Assign tags. Automatically detect recurring transactions.",
     heroAlerts: "Periodic alerts via Telegram and Slack. Weekly insights by email.",
     heroPrimaryCta: "Get started",
     heroSecondaryCta: "View roadmap",
@@ -67,7 +101,7 @@ const translations = {
     privacyHighlight1: "Your banking data is never seen or sold by us. It is stored with user-only access.",
     privacyHighlight2: "Banking data is stored encrypted.",
     privacyHighlight3: "Banking information suppliers are ISO 27000 certified companies.",
-    privacyHighlight4: "Bank authentication credentials are not stored or processed through our servers.",
+    privacyHighlight4: "Bank authentication credentials are not stored or processed through our servers. Credentials expire automatically after 90 days if not renewed by you.",
     privacyHighlight5: "App servers are located in Europe (Germany).",
     privacyHighlight6: "The app client code is open-sourced on GitHub and can be inspected by everyone.",
     landingStorageTitle: "Your data, your choice",
@@ -76,6 +110,10 @@ const translations = {
     landingStorageCloudBody: "Data synced to our servers. Automatic transaction updates and alerts enabled.",
     landingStorageLocalTitle: "Local only",
     landingStorageLocalBody: "No automatic sync or periodic alerts. Refresh manually when you use the app.",
+    landingStorageEncryptionTitle: "Encryption",
+    landingStorageEncryptionBody: "Cloud data is stored encrypted. Local data is stored in the browser and can optionally be encrypted with a passphrase chosen by the user.",
+    landingStorageDataTitle: "Data",
+    landingStorageDataBody: "Export and import data in CSV (Excel-compatible), JSON, and OFX formats. Data is also accessible via API for third-party integration.",
     dashboardTitle: "Daily dashboards",
     dashboardBody:
       "Visualize income, expenses, and savings targets with AI-assisted categorization and smart alerts.",
@@ -215,17 +253,61 @@ const translations = {
     profileTabAlerts: "Alerts",
     profileTabStorage: "Storage",
     profileTabApiTokens: "API Tokens",
+    profileTabSubscription: "Subscription",
     profileWeeklyEmails: "Weekly emails",
+    subscriptionStatusActive: "Active subscription",
+    subscriptionStatusCanceled: "Subscription canceled",
+    subscriptionStatusTrial: "Trial period.",
+    subscriptionTrialEndsOn: "Trial ends on",
+    subscriptionManage: "Manage subscription",
+    subscriptionRefresh: "Refresh",
+    subscriptionRefreshed: "Subscription updated",
+    subscriptionRefreshing: "Refreshing…",
+    subscriptionSubscribe: "Subscribe",
+    subscriptionNoAccess: "Trial ended. Subscribe to add accounts and transactions.",
+    subscriptionTrialEnded: "Trial ended",
+    subscriptionPeriodEndsOn: "Current period ends on",
+    subscriptionCheckoutLoading: "Redirecting to checkout…",
+    subscriptionPortalLoading: "Opening billing portal…",
+    subscriptionSuccessMessage: "Subscription active. Thank you.",
+    subscriptionCancelMessage: "Checkout cancelled.",
     profileWeeklyEmailsHelp: "Receive the weekly Insights report by email (Sunday 08:00 UTC)",
     profileStorageMode: "Data storage",
     profileStorageModeCloud: "Cloud sync",
     profileStorageModeLocal: "Local only",
     profileStorageModeCloudHelp: "Your data is synced to our servers. Automatic transaction updates and alerts are enabled.",
-    profileStorageModeLocalHelp: "Automatic transaction fetch and periodic alerts are disabled. You can still refresh manually when you use the app.",
+    profileStorageModeLocalHelp: "Data is stored in this browser. You can export your data periodically to a CSV/JSON file. Automatic transaction fetch and periodic alerts are disabled. You can still refresh manually when you use the app.",
+    profileDownloadMyData: "Download my data",
+    profileExportHelp: "Export all transactions (local or cloud) for backup.",
+    profileImportHelpShort: "Import updates existing data avoiding duplicates.",
+    profileLocalEncrypt: "Encrypt local data",
+    profileLocalUnlock: "Unlock",
+    profileLocalLock: "Lock",
+    profileLocalEncryptHelp: "Encrypt transactions in this browser with a passphrase (like cloud).",
+    profileLocalUnlockHelp: "Local data is encrypted. Enter passphrase to unlock.",
+    profileLocalLockConfirmHelp: "Enter your passphrase to confirm lock.",
+    profilePassphrasePlaceholder: "Passphrase",
+    profileSetPassphrase: "Set passphrase",
+    profileUnlock: "Unlock",
+    profileDownloadJson: "Download as JSON",
+    profileDownloadCsv: "Download as CSV",
+    profileDownloadOfx: "Download as OFX",
+    profileImportData: "Import data",
+    profileImportDataHelp: "Import transactions from a previously exported JSON file. Merges with existing local data.",
+    profileMigrationToCloud: "When switching to Cloud: use «Download my data» here, then after switching to Cloud use the import option to upload your data.",
+    profileMigrationToLocal: "When switching to Local: export your transactions from the Transactions page or API, then import the file here after switching.",
+    profileSwitchToLocalTitle: "Switch to local storage",
+    profileSwitchToLocalCopied: "Your data has been copied to this device. Optionally download a backup, then confirm to remove it from the cloud.",
+    profileSwitchToLocalConfirm: "Confirm and switch to Local",
+    profileSwitchToCloudTitle: "Switch to cloud storage",
+    profileSwitchToCloudNoData: "You have no local data. Import from a file before switching, or switch without data.",
+    profileSwitchToCloudWithoutData: "Switch to Cloud without data",
     balanceUpdated: "Updated",
     balanceUnavailable: "Balance unavailable",
-    refreshBalances: "Refresh balances and transactions",
+    refreshBalances: "Refresh balances",
     refreshingBalances: "Updating…",
+    refreshTransactions: "Fetch transactions",
+    refreshingTransactions: "Fetching…",
     profileSave: "Save profile",
     profileSaved: "Profile updated.",
     profileSaveError: "Failed to update profile.",
@@ -236,6 +318,21 @@ const translations = {
     profileStatus: "Status",
     profileAdmin: "Admin",
     profileNoEmail: "No email on file",
+    authorizedUsersTitle: "Authorized users",
+    authorizedUsersRequestLabel: "Request access for another person (by email)",
+    authorizedUsersRequestButton: "Request authorization",
+    authorizedUsersPendingTitle: "Pending",
+    authorizedUsersPendingHint: "Admin will create the user; they will be linked automatically when created.",
+    authorizedUsersAuthorizedTitle: "Authorized",
+    authorizedUsersLastLogin: "Last login",
+    authorizedUsersRevoke: "Revoke",
+    authorizedUserAsAuthorizedMessage: "You have access to this account as an authorized user. Only the account owner can manage authorized users, storage, and subscription.",
+    storageLockedSharedAccount: "Storage is fixed to cloud for shared accounts.",
+    subscriptionOwnerOnly: "Only the account owner can manage subscription.",
+    authorizedUserRequestSent: "Request sent. Admin will create the user; they will be linked automatically.",
+    authorizedUserRequestAlreadyExists: "Request already exists for this email.",
+    authorizedUserCannotAuthorizeExistingUser: "That email is already registered. You cannot authorize an existing user.",
+    authorizedUserRevokeFailed: "Failed to revoke access.",
     profileApiTokens: "API tokens",
     profileApiTokensHelp: "Create tokens to access the API (e.g. for scripts). Each token is shown only once when created.",
     profileApiTokenCreate: "Create token",
@@ -296,6 +393,7 @@ const translations = {
     dashboardTransactionsTooltip: "View transactions",
     transactionsListTitle: "All transactions",
     transactionsListEmpty: "No transactions available yet.",
+    transactionsLocalLocked: "Data is locked. Unlock in Profile to view transactions.",
     transactionsAmount: "Amount",
     transactionsDate: "Date",
     transactionsAccount: "Account",
@@ -400,6 +498,7 @@ const translations = {
     settingsTagName: "Tag name",
     settingsExport: "Export",
     settingsImport: "Import",
+    settingsLoadSample: "Load sample categories and tags",
     settingsExportImport: "Export / Import",
     settingsExportSuccess: "Settings exported.",
     settingsImportSuccess: "Import done: {created} created, {skipped} already existed.",
@@ -490,6 +589,7 @@ const translations = {
     metricsActiveUsers30d: "Active users (30 days)",
     metricsOnboardingCompleted: "Onboarding completed",
     metricsUsersWithAccount: "Users with at least one account",
+    metricsActiveSubscriptionUsers: "Active subscription users",
     metricsTotalAccounts: "Total bank accounts",
     metricsTotalConnections: "Total bank connections",
     metricsTotalTransactions: "Total transactions",
@@ -584,6 +684,18 @@ const translations = {
     helpProfileTelegramAlertsDesc: "Enable or disable Telegram notifications.",
     helpProfileWeeklyEmails: "Weekly emails",
     helpProfileWeeklyEmailsDesc: "Receive the weekly Insights report by email.",
+    helpTelegramCommandsTitle: "Telegram bot commands",
+    helpTelegramCommandsIntro: "Send these commands to the bot in Telegram (after linking this chat).",
+    helpTgCmdTransactions: "/transactions [1–100]",
+    helpTgCmdTransactionsDesc: "Last N transactions (default 10).",
+    helpTgCmdNext: "/next [1–99]",
+    helpTgCmdNextDesc: "Next N upcoming recurring transactions (default 10).",
+    helpTgCmdBalances: "/balances",
+    helpTgCmdBalancesDesc: "Current balance per account and total.",
+    helpTgCmdMonth: "/month [config name]",
+    helpTgCmdMonthDesc: "Month totals (received, paid, difference). Optional: saved Insights config name (e.g. Default).",
+    helpTgCmdYear: "/year [config name]",
+    helpTgCmdYearDesc: "Year-to-date totals. Optional: saved Insights config name.",
     onboardingTitle: "Available Banks",
     onboardingBody: "Choose the bank you want to add",
     onboardingCta: "Complete onboarding",
@@ -596,6 +708,18 @@ const translations = {
     onboardingFriendlyNameSave: "Save account name",
     onboardingAccountsTitle: "Linked accounts",
     onboardingRequired: "Please add at least one account.",
+    wizardTitle: "Getting started",
+    wizardStepCountry: "Set country in Profile → User",
+    wizardStepChannels: "Set Telegram/Slack in Profile → Channels",
+    wizardStepAlerts: "Set alert preferences in Profile → Alerts",
+    wizardStepStorage: "Set data storage in Profile → Storage",
+    wizardStepCategories: "Create categories in Settings",
+    wizardStepTags: "Create tags in Settings",
+    wizardStepAccount: "Add a bank account in Accounts",
+    wizardClose: "Close and mark onboarding complete",
+    wizardMinimize: "Minimize",
+    wizardExpand: "Show onboarding steps",
+    wizardShowAgain: "Show onboarding steps again",
     notAuthorizedTitle: "Access denied",
     notAuthorizedBody:
       "Your user is not authorized yet. Contact the administrator to be added.",
@@ -750,6 +874,11 @@ const translations = {
     insightsEmpty: "No data for the selected filters.",
     insightsMonth: "Month",
     insightsBalance: "Balance",
+    insightsBalanceForecast: "Estimated (EOM)",
+    insightsEstimatedRemaining: "Estimated remaining",
+    insightsEstimatedRevenueLabel: "Estimated revenue (rest of month)",
+    insightsMonthEstimate: "estimate",
+    insightsExportEstimateExcel: "Export estimate (Excel)",
     insightsComment: "Comment",
     myProfile: "My profile",
     userManagement: "User management",
@@ -766,7 +895,7 @@ const translations = {
     heroEyebrow: "Privacidade em primeiro · Pan-Europeu",
     heroTitle: "Uma app para todas as suas contas bancárias. Os seus dados ficam seus.",
     heroBody:
-      "Ligue bancos e cartões em toda a Europa. Nunca vemos nem vendemos os seus dados bancários—ficam armazenados só para si, encriptados, com fornecedores de nível bancário. Servidores na Alemanha. Cliente em código aberto que pode inspecionar no GitHub.",
+      "Ligue bancos e cartões em toda a Europa.\nNunca vemos nem vendemos os seus dados bancários—ficam armazenados só para si, encriptados, com fornecedores de nível bancário. Servidores na Alemanha. Cliente em código aberto que pode inspecionar no GitHub.\n\nAtribua categorias de forma automática a transações. Atribua etiquetas. Deteta automaticamente transações recorrentes.",
     heroAlerts: "Alertas periódicos por Telegram e Slack. Análises semanais por email.",
     heroPrimaryCta: "Começar",
     heroSecondaryCta: "Ver roadmap",
@@ -774,7 +903,7 @@ const translations = {
     privacyHighlight1: "Os seus dados bancários nunca são vistos nem vendidos por nós. Ficam armazenados com acesso apenas do utilizador.",
     privacyHighlight2: "Os dados bancários são armazenados encriptados.",
     privacyHighlight3: "Os fornecedores de informação bancária são empresas certificadas ISO 27000.",
-    privacyHighlight4: "As credenciais de autenticação bancária não são armazenadas nem processadas nos nossos servidores.",
+    privacyHighlight4: "As credenciais de autenticação bancária não são armazenadas nem processadas nos nossos servidores. As credenciais expiram automaticamente ao fim de 90 dias, se não forem renovadas por si.",
     privacyHighlight5: "Os servidores da aplicação estão na Europa (Alemanha).",
     privacyHighlight6: "O código cliente da app é open-source no GitHub e pode ser inspecionado por todos.",
     landingStorageTitle: "Os seus dados, a sua escolha",
@@ -783,6 +912,10 @@ const translations = {
     landingStorageCloudBody: "Dados sincronizados nos nossos servidores. Atualizações automáticas de movimentos e alertas ativos.",
     landingStorageLocalTitle: "Apenas local",
     landingStorageLocalBody: "Sem sincronização automática nem alertas periódicos. Atualize manualmente quando usar a aplicação.",
+    landingStorageEncryptionTitle: "Encriptação",
+    landingStorageEncryptionBody: "Os dados são guardados na nuvem encriptados. Os dados locais são guardados no browser e podem ser opcionalmente encriptados com uma palavra-passe escolhida pelo utilizador.",
+    landingStorageDataTitle: "Dados",
+    landingStorageDataBody: "Exportação e importação de dados para formatos CSV (Excel compatível), JSON, OFX. Os dados são também acessíveis via API para integração com aplicações de terceiros.",
     dashboardTitle: "Painéis diários",
     dashboardBody:
       "Visualize receitas, despesas e metas de poupança com categorização assistida por IA e alertas inteligentes.",
@@ -854,6 +987,7 @@ const translations = {
     metricsActiveUsers30d: "Utilizadores ativos (30 dias)",
     metricsOnboardingCompleted: "Onboarding concluído",
     metricsUsersWithAccount: "Utilizadores com pelo menos uma conta",
+    metricsActiveSubscriptionUsers: "Utilizadores com subscrição ativa",
     metricsTotalAccounts: "Total de contas bancárias",
     metricsTotalConnections: "Total de ligações bancárias",
     metricsTotalTransactions: "Total de transações",
@@ -951,17 +1085,61 @@ const translations = {
     profileTabAlerts: "Alertas",
     profileTabStorage: "Armazenamento",
     profileTabApiTokens: "Tokens de API",
+    profileTabSubscription: "Subscrição",
     profileWeeklyEmails: "Emails semanais",
+    subscriptionStatusActive: "Subscrição ativa",
+    subscriptionStatusCanceled: "Subscrição cancelada",
+    subscriptionStatusTrial: "Período de teste.",
+    subscriptionTrialEndsOn: "Teste termina em",
+    subscriptionManage: "Gerir subscrição",
+    subscriptionRefresh: "Atualizar",
+    subscriptionRefreshed: "Subscrição atualizada",
+    subscriptionRefreshing: "A atualizar…",
+    subscriptionSubscribe: "Subscrever",
+    subscriptionNoAccess: "Trial terminado. Subscreva para adicionar contas e transações.",
+    subscriptionTrialEnded: "Trial terminado",
+    subscriptionPeriodEndsOn: "Período atual termina em",
+    subscriptionCheckoutLoading: "A redirecionar para o checkout…",
+    subscriptionPortalLoading: "A abrir o portal de faturação…",
+    subscriptionSuccessMessage: "Subscrição ativa. Obrigado.",
+    subscriptionCancelMessage: "Checkout cancelado.",
     profileWeeklyEmailsHelp: "Receber o relatório semanal de Análises por email (domingo 08:00 UTC)",
     profileStorageMode: "Armazenamento de dados",
     profileStorageModeCloud: "Sincronização na nuvem",
     profileStorageModeLocal: "Apenas local",
     profileStorageModeCloudHelp: "Os seus dados são sincronizados nos nossos servidores. Atualizações automáticas de movimentos e alertas estão ativas.",
-    profileStorageModeLocalHelp: "A atualização automática de movimentos e os alertas periódicos estão desativados. Pode atualizar manualmente quando usar a aplicação.",
+    profileStorageModeLocalHelp: "Os dados são guardados neste browser. Pode exportar periodicamente os dados para um ficheiro CSV/JSON. A atualização automática de movimentos e os alertas periódicos estão desativados. Pode atualizar manualmente quando usar a aplicação.",
+    profileDownloadMyData: "Descarregar os meus dados",
+    profileExportHelp: "Exporte todos os movimentos (local ou nuvem) para cópia de segurança.",
+    profileImportHelpShort: "A importação actualiza os dados existentes evitando criar duplicados.",
+    profileLocalEncrypt: "Encriptar dados locais",
+    profileLocalUnlock: "Desbloquear",
+    profileLocalLock: "Bloquear",
+    profileLocalEncryptHelp: "Encriptar movimentos neste browser com uma palavra-passe (como na nuvem).",
+    profileLocalUnlockHelp: "Os dados locais estão encriptados. Introduza a palavra-passe para desbloquear.",
+    profileLocalLockConfirmHelp: "Introduza a palavra-passe para confirmar o bloqueio. CUIDADO: se perder a palavra-passe não há forma de aceder aos dados. Guarde a palavra-passe com cuidado.",
+    profilePassphrasePlaceholder: "Palavra-passe",
+    profileSetPassphrase: "Definir palavra-passe",
+    profileUnlock: "Desbloquear",
+    profileDownloadJson: "Descarregar como JSON",
+    profileDownloadCsv: "Descarregar como CSV",
+    profileDownloadOfx: "Descarregar como OFX",
+    profileImportData: "Importar dados",
+    profileImportDataHelp: "Importar movimentos de um ficheiro JSON exportado anteriormente. Faz merge com os dados locais existentes.",
+    profileMigrationToCloud: "Ao mudar para Nuvem: use «Descarregar os meus dados» aqui e, após mudar para Nuvem, use a opção de importação para enviar os dados.",
+    profileMigrationToLocal: "Ao mudar para Local: exporte os movimentos na página Movimentos ou via API e importe o ficheiro aqui após mudar.",
+    profileSwitchToLocalTitle: "Mudar para armazenamento local",
+    profileSwitchToLocalCopied: "Os seus dados foram copiados para este dispositivo. Pode descarregar uma cópia de segurança e, em seguida, confirmar para os remover da nuvem.",
+    profileSwitchToLocalConfirm: "Confirmar e mudar para Local",
+    profileSwitchToCloudTitle: "Mudar para armazenamento na nuvem",
+    profileSwitchToCloudNoData: "Não tem dados locais. Importe de um ficheiro antes de mudar ou mude sem dados.",
+    profileSwitchToCloudWithoutData: "Mudar para Nuvem sem dados",
     balanceUpdated: "Atualizado",
     balanceUnavailable: "Saldo indisponível",
-    refreshBalances: "Atualizar saldos e movimentos",
+    refreshBalances: "Atualizar saldos",
     refreshingBalances: "A atualizar…",
+    refreshTransactions: "Obter transações",
+    refreshingTransactions: "A obter…",
     profileSave: "Guardar perfil",
     profileSaved: "Perfil atualizado.",
     profileSaveError: "Erro ao atualizar perfil.",
@@ -972,6 +1150,21 @@ const translations = {
     profileStatus: "Estado",
     profileAdmin: "Admin",
     profileNoEmail: "Sem email registado",
+    authorizedUsersTitle: "Utilizadores autorizados",
+    authorizedUsersRequestLabel: "Pedir acesso para outra pessoa (por email)",
+    authorizedUsersRequestButton: "Pedir autorização",
+    authorizedUsersPendingTitle: "Pendentes",
+    authorizedUsersPendingHint: "O administrador criará o utilizador; será ligado automaticamente quando for criado.",
+    authorizedUsersAuthorizedTitle: "Autorizados",
+    authorizedUsersLastLogin: "Último acesso",
+    authorizedUsersRevoke: "Revogar",
+    authorizedUserAsAuthorizedMessage: "Tem acesso a esta conta como utilizador autorizado. Apenas o proprietário da conta pode gerir utilizadores autorizados, armazenamento e subscrição.",
+    storageLockedSharedAccount: "O armazenamento está fixo na nuvem para contas partilhadas.",
+    subscriptionOwnerOnly: "Apenas o proprietário da conta pode gerir a subscrição.",
+    authorizedUserRequestSent: "Pedido enviado. O administrador criará o utilizador; será ligado automaticamente.",
+    authorizedUserRequestAlreadyExists: "Já existe um pedido para este email.",
+    authorizedUserCannotAuthorizeExistingUser: "Esse email já está registado. Não pode autorizar um utilizador existente.",
+    authorizedUserRevokeFailed: "Falha ao revogar acesso.",
     profileApiTokens: "Tokens de API",
     profileApiTokensHelp: "Criar tokens para aceder à API (ex.: scripts). Cada token é mostrado apenas uma vez ao criar.",
     profileApiTokenCreate: "Criar token",
@@ -1032,6 +1225,7 @@ const translations = {
     dashboardTransactionsTooltip: "Ver transações",
     transactionsListTitle: "Todas as transações",
     transactionsListEmpty: "Ainda não existem transações.",
+    transactionsLocalLocked: "Dados bloqueados. Desbloqueie no Perfil para ver os movimentos.",
     transactionsAmount: "Montante",
     transactionsDate: "Data",
     transactionsAccount: "Conta",
@@ -1136,6 +1330,7 @@ const translations = {
     settingsTagName: "Nome da etiqueta",
     settingsExport: "Exportar",
     settingsImport: "Importar",
+    settingsLoadSample: "Carregar categorias e etiquetas de exemplo",
     settingsExportImport: "Exportar / Importar",
     settingsExportSuccess: "Definições exportadas.",
     settingsImportSuccess: "Importação concluída: {created} criados, {skipped} já existiam.",
@@ -1291,6 +1486,18 @@ const translations = {
     helpProfileTelegramAlertsDesc: "Ativar ou desativar notificações por Telegram.",
     helpProfileWeeklyEmails: "Emails semanais",
     helpProfileWeeklyEmailsDesc: "Receber o relatório semanal de Análises por email.",
+    helpTelegramCommandsTitle: "Comandos do bot Telegram",
+    helpTelegramCommandsIntro: "Envie estes comandos ao bot no Telegram (depois de ligar este chat).",
+    helpTgCmdTransactions: "/transactions [1–100]",
+    helpTgCmdTransactionsDesc: "Últimas N transações (predefinido 10).",
+    helpTgCmdNext: "/next [1–99]",
+    helpTgCmdNextDesc: "Próximas N transações recorrentes planeadas (predefinido 10).",
+    helpTgCmdBalances: "/balances",
+    helpTgCmdBalancesDesc: "Saldo atual por conta e total.",
+    helpTgCmdMonth: "/month [nome da config]",
+    helpTgCmdMonthDesc: "Totais do mês (recebido, pago, diferença). Opcional: nome da configuração de Análises (ex. Predefinida).",
+    helpTgCmdYear: "/year [nome da config]",
+    helpTgCmdYearDesc: "Totais do ano até hoje. Opcional: nome da configuração de Análises.",
     onboardingTitle: "Lista de Bancos disponíveis",
     onboardingBody: "Escolha o banco que quer acrescentar",
     onboardingCta: "Concluir onboarding",
@@ -1303,6 +1510,18 @@ const translations = {
     onboardingFriendlyNameSave: "Guardar nome da conta",
     onboardingAccountsTitle: "Contas ligadas",
     onboardingRequired: "Adicione pelo menos uma conta.",
+    wizardTitle: "Começar",
+    wizardStepCountry: "Definir país no Perfil → Utilizador",
+    wizardStepChannels: "Definir Telegram/Slack no Perfil → Canais",
+    wizardStepAlerts: "Definir alertas no Perfil → Alertas",
+    wizardStepStorage: "Definir armazenamento no Perfil → Armazenamento",
+    wizardStepCategories: "Criar categorias em Definições",
+    wizardStepTags: "Criar etiquetas em Definições",
+    wizardStepAccount: "Adicionar conta bancária em Contas",
+    wizardClose: "Fechar e marcar onboarding como concluído",
+    wizardMinimize: "Minimizar",
+    wizardExpand: "Mostrar passos do onboarding",
+    wizardShowAgain: "Mostrar passos do onboarding novamente",
     notAuthorizedTitle: "Acesso negado",
     notAuthorizedBody:
       "Este utilizador ainda não está autorizado. Contacte o administrador.",
@@ -1456,6 +1675,11 @@ const translations = {
     insightsEmpty: "Sem dados para os filtros selecionados.",
     insightsMonth: "Mês",
     insightsBalance: "Saldo",
+    insightsBalanceForecast: "Estimado (fim do mês)",
+    insightsEstimatedRemaining: "Estimado em falta",
+    insightsEstimatedRevenueLabel: "Receitas estimadas (resto do mês)",
+    insightsMonthEstimate: "estimativa",
+    insightsExportEstimateExcel: "Exportar estimativa (Excel)",
     insightsComment: "Comentário",
     myProfile: "O meu perfil",
     userManagement: "Gestão de utilizadores",
@@ -1472,7 +1696,7 @@ const translations = {
     heroEyebrow: "Privacidad primero · Pan-Europeo",
     heroTitle: "Una app para todas tus cuentas bancarias. Tus datos siguen siendo tuyos.",
     heroBody:
-      "Conecta bancos y tarjetas en toda Europa. Nunca vemos ni vendemos tus datos bancarios—se almacenan solo para tu acceso, cifrados, con proveedores de nivel bancario. Servidores en Alemania. Cliente en código abierto que puedes inspeccionar en GitHub.",
+      "Conecta bancos y tarjetas en toda Europa.\nNunca vemos ni vendemos tus datos bancarios—se almacenan solo para ti, cifrados, con proveedores de nivel bancario. Servidores en Alemania. Cliente en código abierto que puedes inspeccionar en GitHub.\n\nAsigna categorías a las transacciones de forma automática. Asigna etiquetas. Detecta automáticamente transacciones recurrentes.",
     heroAlerts: "Alertas periódicos por Telegram y Slack. Análisis semanales por email.",
     heroPrimaryCta: "Empezar",
     heroSecondaryCta: "Ver roadmap",
@@ -1480,7 +1704,7 @@ const translations = {
     privacyHighlight1: "Tus datos bancarios nunca son vistos ni vendidos por nosotros. Se almacenan con acceso solo del usuario.",
     privacyHighlight2: "Los datos bancarios se almacenan cifrados.",
     privacyHighlight3: "Los proveedores de información bancaria son empresas certificadas ISO 27000.",
-    privacyHighlight4: "Las credenciales de autenticación bancaria no se almacenan ni procesan en nuestros servidores.",
+    privacyHighlight4: "Las credenciales de autenticación bancaria no se almacenan ni procesan en nuestros servidores. Las credenciales expiran automáticamente a los 90 días si no las renueva.",
     privacyHighlight5: "Los servidores de la aplicación están en Europa (Alemania).",
     privacyHighlight6: "El código cliente de la app es open-source en GitHub y puede ser inspeccionado por todos.",
     landingStorageTitle: "Tus datos, tu elección",
@@ -1489,6 +1713,10 @@ const translations = {
     landingStorageCloudBody: "Datos sincronizados en nuestros servidores. Actualizaciones automáticas de transacciones y alertas activas.",
     landingStorageLocalTitle: "Solo local",
     landingStorageLocalBody: "Sin sincronización automática ni alertas periódicas. Actualiza manualmente al usar la aplicación.",
+    landingStorageEncryptionTitle: "Cifrado",
+    landingStorageEncryptionBody: "Los datos en la nube se almacenan cifrados. Los datos locales se guardan en el navegador y pueden cifrarse opcionalmente con una contraseña elegida por el usuario.",
+    landingStorageDataTitle: "Datos",
+    landingStorageDataBody: "Exportación e importación de datos en formatos CSV (compatible con Excel), JSON y OFX. Los datos también son accesibles vía API para integración con aplicaciones de terceros.",
     dashboardTitle: "Paneles diarios",
     dashboardBody:
       "Visualiza ingresos, gastos y metas de ahorro con categorización asistida por IA y alertas inteligentes.",
@@ -1560,6 +1788,7 @@ const translations = {
     metricsActiveUsers30d: "Usuarios activos (30 días)",
     metricsOnboardingCompleted: "Onboarding completado",
     metricsUsersWithAccount: "Usuarios con al menos una cuenta",
+    metricsActiveSubscriptionUsers: "Usuarios con suscripción activa",
     metricsTotalAccounts: "Total de cuentas bancarias",
     metricsTotalConnections: "Total de conexiones bancarias",
     metricsTotalTransactions: "Total de transacciones",
@@ -1657,17 +1886,61 @@ const translations = {
     profileTabAlerts: "Alertas",
     profileTabStorage: "Almacenamiento",
     profileTabApiTokens: "Tokens de API",
+    profileTabSubscription: "Suscripción",
     profileWeeklyEmails: "Emails semanales",
+    subscriptionStatusActive: "Suscripción activa",
+    subscriptionStatusCanceled: "Suscripción cancelada",
+    subscriptionStatusTrial: "Prueba",
+    subscriptionTrialEndsOn: "La prueba termina el",
+    subscriptionManage: "Gestionar suscripción",
+    subscriptionRefresh: "Actualizar",
+    subscriptionRefreshed: "Suscripción actualizada",
+    subscriptionRefreshing: "Actualizando…",
+    subscriptionSubscribe: "Suscribirse",
+    subscriptionNoAccess: "Prueba terminada. Suscríbete para añadir cuentas y transacciones.",
+    subscriptionTrialEnded: "Prueba terminada",
+    subscriptionPeriodEndsOn: "El periodo actual termina el",
+    subscriptionCheckoutLoading: "Redirigiendo al pago…",
+    subscriptionPortalLoading: "Abriendo el portal de facturación…",
+    subscriptionSuccessMessage: "Suscripción activa. Gracias.",
+    subscriptionCancelMessage: "Checkout cancelado.",
     profileWeeklyEmailsHelp: "Recibir el informe semanal de Análisis por email (domingo 08:00 UTC)",
     profileStorageMode: "Almacenamiento de datos",
     profileStorageModeCloud: "Sincronización en la nube",
     profileStorageModeLocal: "Solo local",
     profileStorageModeCloudHelp: "Sus datos se sincronizan en nuestros servidores. Las actualizaciones automáticas de transacciones y alertas están activas.",
-    profileStorageModeLocalHelp: "La actualización automática de transacciones y las alertas periódicas están desactivadas. Puede actualizar manualmente al usar la aplicación.",
+    profileStorageModeLocalHelp: "Los datos se guardan en este navegador. Puede exportar periódicamente los datos a un archivo CSV/JSON. La actualización automática de transacciones y las alertas periódicas están desactivadas. Puede actualizar manualmente al usar la aplicación.",
+    profileDownloadMyData: "Descargar mis datos",
+    profileExportHelp: "Exporte todas las transacciones (local o nube) para copia de seguridad.",
+    profileImportHelpShort: "La importación actualiza los datos existentes evitando crear duplicados.",
+    profileLocalEncrypt: "Cifrar datos locales",
+    profileLocalUnlock: "Desbloquear",
+    profileLocalLock: "Bloquear",
+    profileLocalEncryptHelp: "Cifrar transacciones en este navegador con una contraseña (como en la nube).",
+    profileLocalUnlockHelp: "Los datos locales están cifrados. Introduzca la contraseña para desbloquear.",
+    profileLocalLockConfirmHelp: "Introduzca la contraseña para confirmar el bloqueo.",
+    profilePassphrasePlaceholder: "Contraseña",
+    profileSetPassphrase: "Establecer contraseña",
+    profileUnlock: "Desbloquear",
+    profileDownloadJson: "Descargar como JSON",
+    profileDownloadCsv: "Descargar como CSV",
+    profileDownloadOfx: "Descargar como OFX",
+    profileImportData: "Importar datos",
+    profileImportDataHelp: "Importar transacciones desde un archivo JSON exportado previamente. Se combina con los datos locales existentes.",
+    profileMigrationToCloud: "Al cambiar a Nube: use «Descargar mis datos» aquí y, tras cambiar a Nube, use la opción de importación para subir los datos.",
+    profileMigrationToLocal: "Al cambiar a Local: exporte sus transacciones desde la página Transacciones o la API e importe el archivo aquí tras cambiar.",
+    profileSwitchToLocalTitle: "Cambiar a almacenamiento local",
+    profileSwitchToLocalCopied: "Sus datos se han copiado a este dispositivo. Puede descargar una copia de seguridad y luego confirmar para eliminarlos de la nube.",
+    profileSwitchToLocalConfirm: "Confirmar y cambiar a Local",
+    profileSwitchToCloudTitle: "Cambiar a almacenamiento en la nube",
+    profileSwitchToCloudNoData: "No tiene datos locales. Importe desde un archivo antes de cambiar o cambie sin datos.",
+    profileSwitchToCloudWithoutData: "Cambiar a Nube sin datos",
     balanceUpdated: "Actualizado",
     balanceUnavailable: "Saldo no disponible",
-    refreshBalances: "Actualizar saldos y movimientos",
+    refreshBalances: "Actualizar saldos",
     refreshingBalances: "Actualizando…",
+    refreshTransactions: "Obtener transacciones",
+    refreshingTransactions: "Obteniendo…",
     profileSave: "Guardar perfil",
     profileSaved: "Perfil actualizado.",
     profileSaveError: "Error al actualizar perfil.",
@@ -1678,6 +1951,21 @@ const translations = {
     profileStatus: "Estado",
     profileAdmin: "Admin",
     profileNoEmail: "Sin email registrado",
+    authorizedUsersTitle: "Usuarios autorizados",
+    authorizedUsersRequestLabel: "Solicitar acceso para otra persona (por email)",
+    authorizedUsersRequestButton: "Solicitar autorización",
+    authorizedUsersPendingTitle: "Pendientes",
+    authorizedUsersPendingHint: "El administrador creará el usuario; se vinculará automáticamente al crearlo.",
+    authorizedUsersAuthorizedTitle: "Autorizados",
+    authorizedUsersLastLogin: "Último acceso",
+    authorizedUsersRevoke: "Revocar",
+    authorizedUserAsAuthorizedMessage: "Tiene acceso a esta cuenta como usuario autorizado. Solo el propietario puede gestionar usuarios autorizados, almacenamiento y suscripción.",
+    storageLockedSharedAccount: "El almacenamiento está fijado en nube para cuentas compartidas.",
+    subscriptionOwnerOnly: "Solo el propietario de la cuenta puede gestionar la suscripción.",
+    authorizedUserRequestSent: "Solicitud enviada. El administrador creará el usuario; se vinculará automáticamente.",
+    authorizedUserRequestAlreadyExists: "Ya existe una solicitud para este email.",
+    authorizedUserCannotAuthorizeExistingUser: "Ese email ya está registrado. No puede autorizar a un usuario existente.",
+    authorizedUserRevokeFailed: "Error al revocar el acceso.",
     profileApiTokens: "Tokens de API",
     profileApiTokensHelp: "Crear tokens para acceder a la API (ej. scripts). Cada token se muestra solo una vez al crearlo.",
     profileApiTokenCreate: "Crear token",
@@ -1738,6 +2026,7 @@ const translations = {
     dashboardTransactionsTooltip: "Ver transacciones",
     transactionsListTitle: "Todas las transacciones",
     transactionsListEmpty: "Aún no hay transacciones.",
+    transactionsLocalLocked: "Datos bloqueados. Desbloquee en Perfil para ver las transacciones.",
     transactionsAmount: "Importe",
     transactionsDate: "Fecha",
     transactionsAccount: "Cuenta",
@@ -1842,6 +2131,7 @@ const translations = {
     settingsTagName: "Nombre de etiqueta",
     settingsExport: "Exportar",
     settingsImport: "Importar",
+    settingsLoadSample: "Cargar categorías y etiquetas de ejemplo",
     settingsExportImport: "Exportar / Importar",
     settingsExportSuccess: "Ajustes exportados.",
     settingsImportSuccess: "Importación hecha: {created} creados, {skipped} ya existían.",
@@ -1997,6 +2287,18 @@ const translations = {
     helpProfileTelegramAlertsDesc: "Activar o desactivar notificaciones por Telegram.",
     helpProfileWeeklyEmails: "Emails semanales",
     helpProfileWeeklyEmailsDesc: "Recibir el informe semanal de Análisis por email.",
+    helpTelegramCommandsTitle: "Comandos del bot de Telegram",
+    helpTelegramCommandsIntro: "Envía estos comandos al bot en Telegram (después de vincular este chat).",
+    helpTgCmdTransactions: "/transactions [1–100]",
+    helpTgCmdTransactionsDesc: "Últimas N transacciones (por defecto 10).",
+    helpTgCmdNext: "/next [1–99]",
+    helpTgCmdNextDesc: "Próximas N transacciones recurrentes previstas (por defecto 10).",
+    helpTgCmdBalances: "/balances",
+    helpTgCmdBalancesDesc: "Saldo actual por cuenta y total.",
+    helpTgCmdMonth: "/month [nombre config]",
+    helpTgCmdMonthDesc: "Totales del mes (recibido, pagado, diferencia). Opcional: nombre de configuración de Análisis (ej. Por defecto).",
+    helpTgCmdYear: "/year [nombre config]",
+    helpTgCmdYearDesc: "Totales del año hasta hoy. Opcional: nombre de configuración de Análisis.",
     onboardingTitle: "Bancos disponibles",
     onboardingBody: "Elige el banco que quieres añadir",
     onboardingCta: "Completar onboarding",
@@ -2009,6 +2311,18 @@ const translations = {
     onboardingFriendlyNameSave: "Guardar nombre de la cuenta",
     onboardingAccountsTitle: "Cuentas vinculadas",
     onboardingRequired: "Añade al menos una cuenta.",
+    wizardTitle: "Comenzar",
+    wizardStepCountry: "Definir país en Perfil → Usuario",
+    wizardStepChannels: "Definir Telegram/Slack en Perfil → Canales",
+    wizardStepAlerts: "Definir alertas en Perfil → Alertas",
+    wizardStepStorage: "Definir almacenamiento en Perfil → Almacenamiento",
+    wizardStepCategories: "Crear categorías en Ajustes",
+    wizardStepTags: "Crear etiquetas en Ajustes",
+    wizardStepAccount: "Añadir cuenta bancaria en Cuentas",
+    wizardClose: "Cerrar y marcar onboarding como completado",
+    wizardMinimize: "Minimizar",
+    wizardExpand: "Mostrar pasos del onboarding",
+    wizardShowAgain: "Mostrar pasos del onboarding de nuevo",
     notAuthorizedTitle: "Acceso denegado",
     notAuthorizedBody:
       "Su usuario aún no está autorizado. Contacte al administrador.",
@@ -2162,6 +2476,11 @@ const translations = {
     insightsEmpty: "Sin datos para los filtros seleccionados.",
     insightsMonth: "Mes",
     insightsBalance: "Saldo",
+    insightsBalanceForecast: "Estimado (fin de mes)",
+    insightsEstimatedRemaining: "Estimado pendiente",
+    insightsEstimatedRevenueLabel: "Ingresos estimados (resto del mes)",
+    insightsMonthEstimate: "estimación",
+    insightsExportEstimateExcel: "Exportar estimación (Excel)",
     insightsComment: "Comentario",
     myProfile: "Mi perfil",
     userManagement: "Gestión de usuarios",
@@ -2178,7 +2497,7 @@ const translations = {
     heroEyebrow: "Confidentialité d'abord · Pan-Européen",
     heroTitle: "Une app pour tous vos comptes bancaires. Vos données restent les vôtres.",
     heroBody:
-      "Connectez banques et cartes dans toute l'Europe. Nous ne voyons ni ne vendons jamais vos données bancaires—elles sont stockées pour votre seul accès, chiffrées, avec des fournisseurs de niveau bancaire. Serveurs en Allemagne. Client open-source que vous pouvez inspecter sur GitHub.",
+      "Connectez banques et cartes dans toute l'Europe.\nNous ne voyons ni ne vendons jamais vos données bancaires—elles sont stockées pour vous seul, chiffrées, avec des fournisseurs de niveau bancaire. Serveurs en Allemagne. Client open-source que vous pouvez inspecter sur GitHub.\n\nAttribuez des catégories aux transactions automatiquement. Attribuez des étiquettes. Détectez automatiquement les transactions récurrentes.",
     heroAlerts: "Alertes périodiques par Telegram et Slack. Analyses hebdomadaires par email.",
     heroPrimaryCta: "Commencer",
     heroSecondaryCta: "Voir la roadmap",
@@ -2186,7 +2505,7 @@ const translations = {
     privacyHighlight1: "Vos données bancaires ne sont jamais vues ni vendues par nous. Elles sont stockées avec accès réservé à l'utilisateur.",
     privacyHighlight2: "Les données bancaires sont stockées chiffrées.",
     privacyHighlight3: "Les fournisseurs d'information bancaire sont des entreprises certifiées ISO 27000.",
-    privacyHighlight4: "Les identifiants d'authentification bancaire ne sont pas stockés ni traités sur nos serveurs.",
+    privacyHighlight4: "Les identifiants d'authentification bancaire ne sont pas stockés ni traités sur nos serveurs. Les identifiants expirent automatiquement au bout de 90 jours s'ils ne sont pas renouvelés par vous.",
     privacyHighlight5: "Les serveurs de l'application sont situés en Europe (Allemagne).",
     privacyHighlight6: "Le code client de l'app est open-source sur GitHub et peut être inspecté par tous.",
     landingStorageTitle: "Vos données, votre choix",
@@ -2195,6 +2514,10 @@ const translations = {
     landingStorageCloudBody: "Données synchronisées sur nos serveurs. Mises à jour automatiques des transactions et alertes activées.",
     landingStorageLocalTitle: "Local uniquement",
     landingStorageLocalBody: "Pas de synchronisation automatique ni d'alertes périodiques. Actualisez manuellement lorsque vous utilisez l'application.",
+    landingStorageEncryptionTitle: "Chiffrement",
+    landingStorageEncryptionBody: "Les données cloud sont stockées chiffrées. Les données locales sont stockées dans le navigateur et peuvent être chiffrées optionnellement avec un mot de passe choisi par l'utilisateur.",
+    landingStorageDataTitle: "Données",
+    landingStorageDataBody: "Export et import de données aux formats CSV (compatible Excel), JSON et OFX. Les données sont également accessibles via API pour l'intégration avec des applications tierces.",
     dashboardTitle: "Tableaux de bord quotidiens",
     dashboardBody:
       "Visualisez revenus, dépenses et objectifs d’épargne avec une catégorisation assistée par IA et des alertes intelligentes.",
@@ -2266,6 +2589,7 @@ const translations = {
     metricsActiveUsers30d: "Utilisateurs actifs (30 jours)",
     metricsOnboardingCompleted: "Onboarding terminé",
     metricsUsersWithAccount: "Utilisateurs avec au moins un compte",
+    metricsActiveSubscriptionUsers: "Utilisateurs avec abonnement actif",
     metricsTotalAccounts: "Total des comptes bancaires",
     metricsTotalConnections: "Total des connexions bancaires",
     metricsTotalTransactions: "Total des transactions",
@@ -2363,17 +2687,61 @@ const translations = {
     profileTabAlerts: "Alertes",
     profileTabStorage: "Stockage",
     profileTabApiTokens: "Tokens API",
+    profileTabSubscription: "Abonnement",
     profileWeeklyEmails: "Emails hebdomadaires",
+    subscriptionStatusActive: "Abonnement actif",
+    subscriptionStatusCanceled: "Abonnement annulé",
+    subscriptionStatusTrial: "Essai",
+    subscriptionTrialEndsOn: "Fin de l'essai le",
+    subscriptionManage: "Gérer l'abonnement",
+    subscriptionRefresh: "Actualiser",
+    subscriptionRefreshed: "Abonnement mis à jour",
+    subscriptionRefreshing: "Actualisation…",
+    subscriptionSubscribe: "S'abonner",
+    subscriptionNoAccess: "Essai terminé. Abonnez-vous pour ajouter des comptes et des transactions.",
+    subscriptionTrialEnded: "Essai terminé",
+    subscriptionPeriodEndsOn: "La période en cours se termine le",
+    subscriptionCheckoutLoading: "Redirection vers le paiement…",
+    subscriptionPortalLoading: "Ouverture du portail de facturation…",
+    subscriptionSuccessMessage: "Abonnement actif. Merci.",
+    subscriptionCancelMessage: "Paiement annulé.",
     profileWeeklyEmailsHelp: "Recevoir le rapport hebdomadaire Analyses par email (dimanche 08:00 UTC)",
     profileStorageMode: "Stockage des données",
     profileStorageModeCloud: "Synchronisation cloud",
     profileStorageModeLocal: "Local uniquement",
     profileStorageModeCloudHelp: "Vos données sont synchronisées sur nos serveurs. Les mises à jour automatiques des transactions et les alertes sont activées.",
-    profileStorageModeLocalHelp: "La récupération automatique des transactions et les alertes périodiques sont désactivées. Vous pouvez actualiser manuellement lorsque vous utilisez l'application.",
+    profileStorageModeLocalHelp: "Les données sont enregistrées dans ce navigateur. Vous pouvez exporter vos données périodiquement vers un fichier CSV/JSON. La récupération automatique des transactions et les alertes périodiques sont désactivées. Vous pouvez actualiser manuellement lorsque vous utilisez l'application.",
+    profileDownloadMyData: "Télécharger mes données",
+    profileExportHelp: "Exportez toutes les transactions (local ou cloud) pour sauvegarde.",
+    profileImportHelpShort: "L'import met à jour les données existantes en évitant les doublons.",
+    profileLocalEncrypt: "Chiffrer les données locales",
+    profileLocalUnlock: "Déverrouiller",
+    profileLocalLock: "Verrouiller",
+    profileLocalEncryptHelp: "Chiffrer les transactions dans ce navigateur avec un mot de passe (comme dans le cloud).",
+    profileLocalUnlockHelp: "Les données locales sont chiffrées. Entrez le mot de passe pour déverrouiller.",
+    profileLocalLockConfirmHelp: "Entrez le mot de passe pour confirmer le verrouillage.",
+    profilePassphrasePlaceholder: "Mot de passe",
+    profileSetPassphrase: "Définir le mot de passe",
+    profileUnlock: "Déverrouiller",
+    profileDownloadJson: "Télécharger en JSON",
+    profileDownloadCsv: "Télécharger en CSV",
+    profileDownloadOfx: "Télécharger en OFX",
+    profileImportData: "Importer des données",
+    profileImportDataHelp: "Importer des transactions depuis un fichier JSON exporté. Fusion avec les données locales existantes.",
+    profileMigrationToCloud: "Lors du passage au Cloud : utilisez « Télécharger mes données » ici, puis après passage au Cloud utilisez l'import pour envoyer vos données.",
+    profileMigrationToLocal: "Lors du passage en Local : exportez vos transactions depuis la page Transactions ou l'API, puis importez le fichier ici après le passage.",
+    profileSwitchToLocalTitle: "Passer au stockage local",
+    profileSwitchToLocalCopied: "Vos données ont été copiées sur cet appareil. Vous pouvez télécharger une sauvegarde, puis confirmer pour les supprimer du cloud.",
+    profileSwitchToLocalConfirm: "Confirmer et passer en Local",
+    profileSwitchToCloudTitle: "Passer au stockage cloud",
+    profileSwitchToCloudNoData: "Vous n'avez pas de données locales. Importez un fichier avant de passer, ou passez sans données.",
+    profileSwitchToCloudWithoutData: "Passer au Cloud sans données",
     balanceUpdated: "Mis à jour",
     balanceUnavailable: "Solde non disponible",
-    refreshBalances: "Actualiser soldes et mouvements",
+    refreshBalances: "Actualiser les soldes",
     refreshingBalances: "Mise à jour…",
+    refreshTransactions: "Récupérer les transactions",
+    refreshingTransactions: "Récupération…",
     profileSave: "Enregistrer le profil",
     profileSaved: "Profil mis à jour.",
     profileSaveError: "Échec de la mise à jour.",
@@ -2384,6 +2752,21 @@ const translations = {
     profileStatus: "Statut",
     profileAdmin: "Admin",
     profileNoEmail: "Aucun email enregistré",
+    authorizedUsersTitle: "Utilisateurs autorisés",
+    authorizedUsersRequestLabel: "Demander l'accès pour une autre personne (par email)",
+    authorizedUsersRequestButton: "Demander l'autorisation",
+    authorizedUsersPendingTitle: "En attente",
+    authorizedUsersPendingHint: "L'administrateur créera l'utilisateur; il sera lié automatiquement à la création.",
+    authorizedUsersAuthorizedTitle: "Autorisés",
+    authorizedUsersLastLogin: "Dernière connexion",
+    authorizedUsersRevoke: "Révoquer",
+    authorizedUserAsAuthorizedMessage: "Vous avez accès à ce compte en tant qu'utilisateur autorisé. Seul le propriétaire peut gérer les utilisateurs autorisés, le stockage et l'abonnement.",
+    storageLockedSharedAccount: "Le stockage est fixé sur le cloud pour les comptes partagés.",
+    subscriptionOwnerOnly: "Seul le propriétaire du compte peut gérer l'abonnement.",
+    authorizedUserRequestSent: "Demande envoyée. L'administrateur créera l'utilisateur; il sera lié automatiquement.",
+    authorizedUserRequestAlreadyExists: "Une demande existe déjà pour cet email.",
+    authorizedUserCannotAuthorizeExistingUser: "Cet email est déjà enregistré. Vous ne pouvez pas autoriser un utilisateur existant.",
+    authorizedUserRevokeFailed: "Échec de la révocation de l'accès.",
     profileApiTokens: "Tokens API",
     profileApiTokensHelp: "Créer des tokens pour accéder à l'API (ex. scripts). Chaque token n'est affiché qu'une fois à la création.",
     profileApiTokenCreate: "Créer un token",
@@ -2444,6 +2827,7 @@ const translations = {
     dashboardTransactionsTooltip: "Voir les transactions",
     transactionsListTitle: "Toutes les transactions",
     transactionsListEmpty: "Aucune transaction pour le moment.",
+    transactionsLocalLocked: "Données verrouillées. Déverrouillez dans Profil pour voir les transactions.",
     transactionsAmount: "Montant",
     transactionsDate: "Date",
     transactionsAccount: "Compte",
@@ -2548,6 +2932,7 @@ const translations = {
     settingsTagName: "Nom de l'étiquette",
     settingsExport: "Exporter",
     settingsImport: "Importer",
+    settingsLoadSample: "Charger des catégories et étiquettes d'exemple",
     settingsExportImport: "Exporter / Importer",
     settingsExportSuccess: "Paramètres exportés.",
     settingsImportSuccess: "Importation terminée : {created} créés, {skipped} existaient déjà.",
@@ -2703,6 +3088,18 @@ const translations = {
     helpProfileTelegramAlertsDesc: "Activer ou désactiver les notifications Telegram.",
     helpProfileWeeklyEmails: "Emails hebdomadaires",
     helpProfileWeeklyEmailsDesc: "Recevoir le rapport hebdomadaire Analyses par email.",
+    helpTelegramCommandsTitle: "Commandes du bot Telegram",
+    helpTelegramCommandsIntro: "Envoyez ces commandes au bot sur Telegram (après avoir lié ce chat).",
+    helpTgCmdTransactions: "/transactions [1–100]",
+    helpTgCmdTransactionsDesc: "Dernières N transactions (par défaut 10).",
+    helpTgCmdNext: "/next [1–99]",
+    helpTgCmdNextDesc: "Prochaines N transactions récurrentes prévues (par défaut 10).",
+    helpTgCmdBalances: "/balances",
+    helpTgCmdBalancesDesc: "Solde actuel par compte et total.",
+    helpTgCmdMonth: "/month [nom config]",
+    helpTgCmdMonthDesc: "Totaux du mois (reçu, payé, différence). Optionnel : nom de configuration Analyses (ex. Par défaut).",
+    helpTgCmdYear: "/year [nom config]",
+    helpTgCmdYearDesc: "Totaux de l'année à ce jour. Optionnel : nom de configuration Analyses.",
     onboardingTitle: "Banques disponibles",
     onboardingBody: "Choisissez la banque que vous souhaitez ajouter",
     onboardingCta: "Terminer l’onboarding",
@@ -2715,6 +3112,18 @@ const translations = {
     onboardingFriendlyNameSave: "Enregistrer le nom du compte",
     onboardingAccountsTitle: "Comptes liés",
     onboardingRequired: "Ajoutez au moins un compte.",
+    wizardTitle: "Démarrage",
+    wizardStepCountry: "Définir le pays dans Profil → Utilisateur",
+    wizardStepChannels: "Définir Telegram/Slack dans Profil → Canaux",
+    wizardStepAlerts: "Définir les alertes dans Profil → Alertes",
+    wizardStepStorage: "Définir le stockage dans Profil → Stockage",
+    wizardStepCategories: "Créer des catégories dans Paramètres",
+    wizardStepTags: "Créer des étiquettes dans Paramètres",
+    wizardStepAccount: "Ajouter un compte bancaire dans Comptes",
+    wizardClose: "Fermer et marquer l'onboarding comme terminé",
+    wizardMinimize: "Réduire",
+    wizardExpand: "Afficher les étapes de l'onboarding",
+    wizardShowAgain: "Afficher à nouveau les étapes de l'onboarding",
     notAuthorizedTitle: "Accès refusé",
     notAuthorizedBody:
       "Cet utilisateur n’est pas encore autorisé. Contactez l’administrateur.",
@@ -2868,12 +3277,21 @@ const translations = {
     insightsEmpty: "Aucune donnée pour les filtres sélectionnés.",
     insightsMonth: "Mois",
     insightsBalance: "Solde",
+    insightsBalanceForecast: "Estimé (fin de mois)",
+    insightsEstimatedRemaining: "Estimé restant",
+    insightsEstimatedRevenueLabel: "Revenus estimés (reste du mois)",
+    insightsMonthEstimate: "estimation",
+    insightsExportEstimateExcel: "Exporter l'estimation (Excel)",
     insightsComment: "Commentaire",
     myProfile: "Mon profil",
     userManagement: "Gestion des utilisateurs",
     settings: "Paramètres",
     audit: "Audit",
   },
+  de: translationsDe,
+  it: translationsIt,
+  nl: translationsNl,
+  pl: translationsPl,
 };
 
 const auth0Locales: Record<string, string> = {
@@ -2881,9 +3299,13 @@ const auth0Locales: Record<string, string> = {
   pt: "pt",
   es: "es",
   fr: "fr",
+  de: "de",
+  it: "it",
+  nl: "nl",
+  pl: "pl",
 };
 
-type HelpContextId = "transactions" | "accounts" | "insights" | "profile";
+type HelpContextId = "transactions" | "accounts" | "insights" | "profile" | "profileTelegramCommands";
 
 const HELP_CONTENT: Record<
   HelpContextId,
@@ -2949,6 +3371,17 @@ const HELP_CONTENT: Record<
       { icon: "fa-solid fa-envelope", labelKey: "helpProfileWeeklyEmails", descKey: "helpProfileWeeklyEmailsDesc" },
     ],
   },
+  profileTelegramCommands: {
+    titleKey: "helpTelegramCommandsTitle",
+    introKey: "helpTelegramCommandsIntro",
+    items: [
+      { icon: "fa-solid fa-receipt", labelKey: "helpTgCmdTransactions", descKey: "helpTgCmdTransactionsDesc" },
+      { icon: "fa-solid fa-calendar-days", labelKey: "helpTgCmdNext", descKey: "helpTgCmdNextDesc" },
+      { icon: "fa-solid fa-scale-balanced", labelKey: "helpTgCmdBalances", descKey: "helpTgCmdBalancesDesc" },
+      { icon: "fa-solid fa-calendar", labelKey: "helpTgCmdMonth", descKey: "helpTgCmdMonthDesc" },
+      { icon: "fa-solid fa-calendar", labelKey: "helpTgCmdYear", descKey: "helpTgCmdYearDesc" },
+    ],
+  },
 };
 
 function App() {
@@ -2984,6 +3417,10 @@ function App() {
   >("home");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showToTopButton, setShowToTopButton] = useState(false);
+  const [bottomBarVisible, setBottomBarVisible] = useState(true);
+  const [mobileHeaderVisible, setMobileHeaderVisible] = useState(true);
+  const lastScrollYRef = useRef(0);
+  const mobileMenuOpenRef = useRef(false);
   const [landingCarouselIndex, setLandingCarouselIndex] = useState(0);
   const [featurePreviewSrc, setFeaturePreviewSrc] = useState<string | null>(null);
   const featurePreviewCloseTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -2996,7 +3433,12 @@ function App() {
     user,
     getAccessTokenSilently,
   } = useAuth0();
-  const t = translations[language.code] ?? translations.en;
+  const t = useMemo(() => {
+    const base = translations.en as Record<string, string>;
+    const locale = (translations as Record<string, Record<string, string>>)[language.code];
+    if (!locale) return base;
+    return { ...base, ...locale };
+  }, [language.code]);
   const auth0Locale = auth0Locales[language.code] ?? "en";
   const apiBase = import.meta.env.VITE_API_URL ?? "";
   const appName = import.meta.env.VITE_APP_NAME || "Bancos";
@@ -3015,6 +3457,11 @@ function App() {
     telegram_alerts_enabled?: boolean;
     slack_webhook_url?: string | null;
     slack_alerts_enabled?: boolean;
+    has_subscription_access?: boolean;
+    trial_ends_at?: string | null;
+    subscription_status?: string | null;
+    subscription_current_period_end?: string | null;
+    subscription_cancel_at_period_end?: boolean;
     weekly_emails_enabled?: boolean;
     storage_mode?: "cloud" | "local";
     recurring_initial_detection_run_at?: string | null;
@@ -3028,6 +3475,9 @@ function App() {
     } | null;
     status?: string;
     emails: { email: string; is_primary: boolean }[];
+    is_authorized_user?: boolean;
+    owner_id?: number | null;
+    storage_locked_for_shared_account?: boolean;
   }>(null);
   const [bankConnections, setBankConnections] = useState<
     {
@@ -3060,6 +3510,7 @@ function App() {
     }[]
   >([]);
   const [balancesRefreshing, setBalancesRefreshing] = useState(false);
+  const [transactionsRefreshing, setTransactionsRefreshing] = useState(false);
   const balanceRefreshTriggeredRef = useRef(false);
   const [categories, setCategories] = useState<{ id: number; name: string }[]>([]);
   const [tags, setTags] = useState<{ id: number; name: string }[]>([]);
@@ -3118,8 +3569,43 @@ function App() {
   const [slackHelpOpen, setSlackHelpOpen] = useState(false);
   const [slackTestLoading, setSlackTestLoading] = useState(false);
   const slackHelpRef = useRef<HTMLDivElement>(null);
-  type ProfileTabId = "user" | "channels" | "alerts" | "storage" | "tokens";
+  type ProfileTabId = "user" | "channels" | "alerts" | "storage" | "tokens" | "subscription";
   const [profileTab, setProfileTab] = useState<ProfileTabId>("user");
+  const profileTabFromUrlRef = useRef<ProfileTabId | null>(null);
+  const [wizardDismissed, setWizardDismissed] = useState(false);
+  const ONBOARDING_WIZARD_STEP_ORDER: OnboardingStepId[] = ["country", "channels", "alerts", "storage", "categories", "tags", "account"];
+  const [onboardingWizardCompletedSteps, setOnboardingWizardCompletedSteps] = useState<Set<OnboardingStepId>>(() => new Set());
+  const [onboardingWizardMinimized, setOnboardingWizardMinimized] = useState(false);
+  const onboardingWizardStorageKeyRef = useRef<string | null>(null);
+  const [settingsInitialTab, setSettingsInitialTab] = useState<"categories" | "tags" | null>(null);
+  const [subscriptionCheckoutLoading, setSubscriptionCheckoutLoading] = useState(false);
+  const [subscriptionPortalLoading, setSubscriptionPortalLoading] = useState(false);
+  const [subscriptionRefreshLoading, setSubscriptionRefreshLoading] = useState(false);
+  const [authorizedUsers, setAuthorizedUsers] = useState<{
+    pending: { email: string; created_at: string }[];
+    authorized: { user_id: number; display_name: string | null; email: string; last_login_at: string | null }[];
+  } | null>(null);
+  const [authorizedUsersLoading, setAuthorizedUsersLoading] = useState(false);
+  const [authorizedUserRequestEmail, setAuthorizedUserRequestEmail] = useState("");
+  const [authorizedUserRequestSubmitting, setAuthorizedUserRequestSubmitting] = useState(false);
+  const [switchToLocalModalOpen, setSwitchToLocalModalOpen] = useState(false);
+  const [switchToCloudModalOpen, setSwitchToCloudModalOpen] = useState(false);
+  const [switchToCloudFileInputKey, setSwitchToCloudFileInputKey] = useState(0);
+  const [localEncryptionStatus, setLocalEncryptionStatus] = useState<{ encrypted: boolean; unlocked: boolean } | null>(null);
+  const [localEncryptModal, setLocalEncryptModal] = useState<"unlock" | "encrypt" | "lock" | null>(null);
+  const [localEncryptPassphrase, setLocalEncryptPassphrase] = useState("");
+  const [pendingAfterUnlock, setPendingAfterUnlock] = useState<{ type: "export"; format: "json" | "csv" | "ofx" } | { type: "switchToCloud" } | null>(null);
+  const localEncryptPassphraseInputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (localEncryptModal) {
+      const id = requestAnimationFrame(() => {
+        localEncryptPassphraseInputRef.current?.focus();
+      });
+      return () => cancelAnimationFrame(id);
+    }
+  }, [localEncryptModal]);
+  const storageModeRef = useRef<"cloud" | "local" | undefined>(undefined);
+  storageModeRef.current = profile?.storage_mode;
   useEffect(() => {
     if (!slackHelpOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -3163,6 +3649,8 @@ function App() {
   const accountAlertsDeleteRecurringIdRef = useRef<number | null>(null);
   accountAlertsDeleteRecurringIdRef.current = accountAlertsDeleteRecurringId;
   const accountAlertsDeleteOverlayRef = useRef<HTMLDivElement>(null);
+  const backupImportInputRef = useRef<HTMLInputElement>(null);
+  const switchToCloudImportInputRef = useRef<HTMLInputElement>(null);
   type RecurringTransactionItem = {
     id: number;
     bank_account_id: number;
@@ -3301,6 +3789,41 @@ function App() {
     }
   }, []);
 
+  // When returning from Stripe checkout (?subscription=success or ?subscription=cancel), open profile on subscription tab
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sub = params.get("subscription");
+    if (sub === "success" || sub === "cancel") {
+      profileTabFromUrlRef.current = "subscription";
+      setActiveSection("profile");
+      setProfileTab("subscription");
+      if (sub === "success") {
+        showToast(t.subscriptionSuccessMessage, "success");
+      } else {
+        showToast(t.subscriptionCancelMessage, "warning");
+      }
+      params.delete("subscription");
+      const query = params.toString();
+      const newUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+      window.history.replaceState({}, "", newUrl);
+    }
+  }, [t.subscriptionSuccessMessage, t.subscriptionCancelMessage]);
+
+  // When returning from Stripe billing portal (?open=profile&tab=subscription), open profile on subscription tab
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("open") === "profile" && params.get("tab") === "subscription") {
+      profileTabFromUrlRef.current = "subscription";
+      setActiveSection("profile");
+      setProfileTab("subscription");
+      params.delete("open");
+      params.delete("tab");
+      const query = params.toString();
+      const newUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
+      window.history.replaceState({}, "", newUrl);
+    }
+  }, []);
+
   useEffect(() => {
     document.documentElement.classList.toggle("dark", isDark);
     try {
@@ -3312,25 +3835,60 @@ function App() {
 
   useEffect(() => {
     document.documentElement.lang = language.code;
-    if (isAuthenticated) {
+    try {
       window.localStorage.setItem("pf_language", language.code);
+    } catch {
+      // ignore (e.g. private browsing)
     }
-  }, [language.code, isAuthenticated]);
+  }, [language.code]);
 
-  // When not logged in (landing page), match browser language (pt, es, fr, en or default en)
+  const SCROLL_EDGE_THRESHOLD = 80;
   useEffect(() => {
-    if (!isAuthenticated) {
-      const browserLang = navigator.language.split("-")[0].toLowerCase();
-      const match = languages.find((lang) => lang.code === browserLang);
-      setLanguage(match ?? languages[0]);
-    }
-  }, [isAuthenticated]);
-
-  useEffect(() => {
-    const onScroll = () =>
-      setShowToTopButton(window.scrollY > window.innerHeight * 0.5);
+    const onScroll = () => {
+      const y = window.scrollY;
+      const atTop = y <= SCROLL_EDGE_THRESHOLD;
+      const atBottom =
+        y + window.innerHeight >=
+        document.documentElement.scrollHeight - SCROLL_EDGE_THRESHOLD;
+      setShowToTopButton(y > window.innerHeight * 0.5);
+      setBottomBarVisible(atTop || atBottom);
+    };
     window.addEventListener("scroll", onScroll, { passive: true });
     onScroll();
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    mobileMenuOpenRef.current = mobileMenuOpen;
+  }, [mobileMenuOpen]);
+
+  // On mobile: hide header when scrolling down, show when scrolling up or near top
+  const MOBILE_BREAKPOINT = 768;
+  const SCROLL_TOP_THRESHOLD = 80;
+  const SCROLL_DELTA_THRESHOLD = 12;
+  useEffect(() => {
+    const onScroll = () => {
+      const y = window.scrollY;
+      if (window.innerWidth >= MOBILE_BREAKPOINT) {
+        setMobileHeaderVisible(true);
+        lastScrollYRef.current = y;
+        return;
+      }
+      if (mobileMenuOpenRef.current) {
+        lastScrollYRef.current = y;
+        return;
+      }
+      const delta = y - lastScrollYRef.current;
+      if (y <= SCROLL_TOP_THRESHOLD) {
+        setMobileHeaderVisible(true);
+      } else if (delta > SCROLL_DELTA_THRESHOLD) {
+        setMobileHeaderVisible(false);
+      } else if (delta < -SCROLL_DELTA_THRESHOLD) {
+        setMobileHeaderVisible(true);
+      }
+      lastScrollYRef.current = y;
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
@@ -3582,6 +4140,26 @@ function App() {
   }, [apiBase, apiToken]);
 
   const loadRecentTransactions = useCallback(async () => {
+    if (profile == null) return;
+    const isLocal = profile.storage_mode === "local";
+    if (isLocal) {
+      try {
+        const all = await localTransactionsGetAll();
+        const sorted = [...all].sort((a, b) => {
+          const da = a.posting_date || a.booking_date || "";
+          const db = b.posting_date || b.booking_date || "";
+          return db.localeCompare(da);
+        });
+        const recent = sorted.slice(0, 5).map((t) => ({
+          ...t,
+          id: t.id || Math.abs((t.local_id || "").split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0)),
+        }));
+        setTransactionsRecent(recent);
+      } catch {
+        setTransactionsRecent([]);
+      }
+      return;
+    }
     if (!apiToken) {
       setTransactionsRecent([]);
       return;
@@ -3592,19 +4170,89 @@ function App() {
       });
       if (response.ok) {
         const data = await response.json();
+        if (storageModeRef.current === "local") return;
         setTransactionsRecent(Array.isArray(data) ? data : data.items ?? []);
       }
     } catch {
+      if (storageModeRef.current === "local") return;
       setTransactionsRecent([]);
     }
-  }, [apiBase, apiToken]);
+  }, [apiBase, apiToken, profile?.storage_mode]);
 
   const loadAllTransactions = useCallback(async () => {
-    if (!apiToken) {
-      setTransactionsAll([]);
+    if (profile == null) return;
+    const isLocal = profile.storage_mode === "local";
+    if (isLocal) {
+      if (bankAccounts.length > 0 && transactionsAccountFilter.length === 0) {
+        setTransactionsAll([]);
+        setTransactionsTotal(0);
+        return;
+      }
+      try {
+        let list = await localTransactionsGetAll();
+        if (transactionsAccountFilter.length > 0) {
+          list = list.filter((t) => transactionsAccountFilter.includes(t.bank_account_id));
+        }
+        if (transactionsSearch?.trim()) {
+          const q = transactionsSearch.trim().toLowerCase();
+          list = list.filter(
+            (t) =>
+              (t.description ?? "").toLowerCase().includes(q) ||
+              (t.institution_name ?? "").toLowerCase().includes(q) ||
+              (t.account_name ?? "").toLowerCase().includes(q) ||
+              (t.account_friendly_name ?? "").toLowerCase().includes(q)
+          );
+        }
+        if (transactionsCategoryIds !== null && transactionsCategoryIds.length > 0) {
+          const set = new Set(transactionsCategoryIds);
+          list = list.filter(
+            (t) =>
+              (t.category_id != null && set.has(t.category_id)) ||
+              (transactionsIncludeUncategorized && t.category_id == null)
+          );
+        } else if (transactionsCategoryIds !== null && !transactionsIncludeUncategorized) {
+          list = list.filter((t) => t.category_id == null);
+        }
+        if (transactionsTagIds !== null && transactionsTagIds.length > 0) {
+          const set = new Set(transactionsTagIds);
+          list = list.filter((t) => {
+            const txTags = t.tags ?? [];
+            const hasMatch = txTags.some((tag) => set.has(tag.id));
+            return hasMatch || (transactionsIncludeUntagged && txTags.length === 0);
+          });
+        } else if (transactionsTagIds !== null && !transactionsIncludeUntagged && tags.length > 0) {
+          const set = new Set(tags.map((tag) => tag.id));
+          list = list.filter((t) => (t.tags ?? []).some((tag) => set.has(tag.id)));
+        }
+        if (transactionsNewOnly) list = list.filter((t) => t.is_new === true);
+        list.sort((a, b) => {
+          const da = a.posting_date || a.booking_date || "";
+          const db = b.posting_date || b.booking_date || "";
+          return db.localeCompare(da);
+        });
+        const total = list.length;
+        const page = list.slice(
+          transactionsPage * transactionsPageSize,
+          transactionsPage * transactionsPageSize + transactionsPageSize
+        );
+        setTransactionsAll(
+          page.map((t) => ({
+            ...t,
+            id: t.id || Math.abs((t.local_id || "").split("").reduce((h, c) => (h * 31 + c.charCodeAt(0)) | 0, 0)),
+          }))
+        );
+        setTransactionsTotal(total);
+      } catch {
+        setTransactionsAll([]);
+        setTransactionsTotal(0);
+      }
       return;
     }
-    // User has accounts but unchecked all: show no transactions (do not request API).
+    if (!apiToken) {
+      setTransactionsAll([]);
+      setTransactionsTotal(0);
+      return;
+    }
     if (bankAccounts.length > 0 && transactionsAccountFilter.length === 0) {
       setTransactionsAll([]);
       setTransactionsTotal(0);
@@ -3639,6 +4287,7 @@ function App() {
       });
       if (response.ok) {
         const data = await response.json();
+        if (storageModeRef.current === "local") return;
         if (Array.isArray(data)) {
           setTransactionsAll(data);
           setTransactionsTotal(data.length);
@@ -3648,12 +4297,14 @@ function App() {
         }
       }
     } catch {
+      if (storageModeRef.current === "local") return;
       setTransactionsAll([]);
       setTransactionsTotal(0);
     }
   }, [
     apiBase,
     apiToken,
+    profile?.storage_mode,
     bankAccounts.length,
     tags,
     transactionsPage,
@@ -3678,7 +4329,6 @@ function App() {
       });
       if (balanceRes.status === 429) {
         showToast(t.gocardlessRateLimitExceeded, "warning");
-        setBalancesRefreshing(false);
         return;
       }
       if (balanceRes.ok) {
@@ -3688,7 +4338,18 @@ function App() {
           showToast(t.refreshBalancesPartialRateLimit, "warning");
         }
       }
+    } catch {
+      // ignore
+    } finally {
+      setBalancesRefreshing(false);
+    }
+  }, [apiBase, apiToken, loadAccounts, t.gocardlessRateLimitExceeded, t.refreshBalancesPartialRateLimit, showToast]);
 
+  const refreshAllTransactions = useCallback(async () => {
+    if (!apiToken) return;
+    setTransactionsRefreshing(true);
+    const headers = { Authorization: `Bearer ${apiToken}` };
+    try {
       const connectionIds = [
         ...new Set(
           bankAccounts
@@ -3697,7 +4358,7 @@ function App() {
         ),
       ];
       if (connectionIds.length === 0) {
-        setBalancesRefreshing(false);
+        setTransactionsRefreshing(false);
         return;
       }
 
@@ -3714,10 +4375,11 @@ function App() {
         (id): id is number => id != null
       );
       if (started.length === 0) {
-        setBalancesRefreshing(false);
+        setTransactionsRefreshing(false);
         return;
       }
 
+      let intervalId: ReturnType<typeof setInterval> | null = null;
       const poll = async () => {
         let anyPending = false;
         let hadFailure = false;
@@ -3744,20 +4406,39 @@ function App() {
           if (hadRateLimit) showToast(t.gocardlessRateLimitExceeded, "warning");
           else if (hadFailure) showToast(t.fetchFailed, "error");
           else showToast(t.fetchCompleted, "success");
+          if (profile?.storage_mode === "local") {
+            for (const connectionId of started) {
+              try {
+                const res = await fetch(
+                  `${apiBase}/api/banks/connections/${connectionId}/transactions/fetch-result`,
+                  { headers }
+                );
+                if (res.ok) {
+                  const data = await res.json();
+                  if (Array.isArray(data.transactions) && data.transactions.length > 0) {
+                    await localTransactionsMergeFromFetch(data.transactions);
+                  }
+                }
+              } catch {
+                // ignore per-connection errors
+              }
+            }
+          }
           await loadAccounts();
           loadRecentTransactions();
           if (activeSection === "transactions") loadAllTransactions();
-          setBalancesRefreshing(false);
+          setTransactionsRefreshing(false);
         }
       };
-      let intervalId: ReturnType<typeof setInterval> | null = setInterval(poll, 2500);
+      intervalId = setInterval(poll, 2500);
       poll();
     } catch {
-      setBalancesRefreshing(false);
+      setTransactionsRefreshing(false);
     }
   }, [
     apiBase,
     apiToken,
+    profile?.storage_mode,
     bankAccounts,
     loadAccounts,
     loadRecentTransactions,
@@ -3796,6 +4477,23 @@ function App() {
       cancelled = true;
     };
   }, [activeSection, apiToken, apiBase]);
+
+  const loadAuthorizedUsers = useCallback(() => {
+    if (!apiToken || !apiBase || !profile || profile.is_authorized_user) return;
+    setAuthorizedUsersLoading(true);
+    fetch(`${apiBase}/api/me/authorized-users`, { headers: { Authorization: `Bearer ${apiToken}` } })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data) setAuthorizedUsers({ pending: data.pending || [], authorized: data.authorized || [] });
+        else setAuthorizedUsers(null);
+      })
+      .catch(() => setAuthorizedUsers(null))
+      .finally(() => setAuthorizedUsersLoading(false));
+  }, [apiBase, apiToken, profile?.id, profile?.is_authorized_user]);
+
+  useEffect(() => {
+    if (activeSection === "profile" && profileTab === "user" && profile && !profile.is_authorized_user) loadAuthorizedUsers();
+  }, [activeSection, profileTab, profile?.id, profile?.is_authorized_user, loadAuthorizedUsers]);
 
   useEffect(() => {
     loadRecentTransactions();
@@ -4015,6 +4713,30 @@ function App() {
     }
   }, [activeSection, loadAllTransactions]);
 
+  // Restore decryption key from localStorage as soon as app mounts (before profile loads), so key is ready when transactions load
+  useEffect(() => {
+    let cancelled = false;
+    restoreLocalEncryptionFromSession().then((restored) => {
+      if (cancelled) return;
+      if (restored) setLocalEncryptionStatus({ encrypted: true, unlocked: true });
+    });
+    return () => { cancelled = true; };
+  }, []);
+
+  // When profile loads with local storage, ensure key is restored from localStorage then reload transactions
+  useEffect(() => {
+    if (profile?.storage_mode !== "local" || !apiToken) return;
+    let cancelled = false;
+    (async () => {
+      const restored = await restoreLocalEncryptionFromSession();
+      if (cancelled) return;
+      if (restored) setLocalEncryptionStatus({ encrypted: true, unlocked: true });
+      loadRecentTransactions();
+      if (activeSection === "transactions") loadAllTransactions();
+    })();
+    return () => { cancelled = true; };
+  }, [profile?.storage_mode, apiToken, activeSection, loadRecentTransactions, loadAllTransactions]);
+
   // Auto-refresh balances once when on Transactions and any automatic account has no balance (skip manual accounts)
   useEffect(() => {
     if (
@@ -4034,20 +4756,19 @@ function App() {
 
   useEffect(() => {
     const refresh = () => {
+      if (document.visibilityState !== "visible") return;
       loadConnections();
       loadAccounts();
       loadRecentTransactions();
-    };
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") refresh();
+      if (activeSection === "transactions") loadAllTransactions();
     };
     window.addEventListener("focus", refresh);
-    document.addEventListener("visibilitychange", handleVisibility);
+    document.addEventListener("visibilitychange", refresh);
     return () => {
       window.removeEventListener("focus", refresh);
-      document.removeEventListener("visibilitychange", handleVisibility);
+      document.removeEventListener("visibilitychange", refresh);
     };
-  }, [loadAccounts, loadConnections]);
+  }, [loadAccounts, loadConnections, loadRecentTransactions, loadAllTransactions, activeSection]);
 
   const formatConnectionTooltip = (updatedAt: string) => {
     const date = new Date(updatedAt);
@@ -4115,6 +4836,18 @@ function App() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!isEscape(event)) return;
+      if (switchToLocalModalOpen) {
+        setSwitchToLocalModalOpen(false);
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+      if (switchToCloudModalOpen) {
+        setSwitchToCloudModalOpen(false);
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
       if (accountAlertsDeleteRecurringIdRef.current != null) {
         setAccountAlertsDeleteRecurringId(null);
         event.preventDefault();
@@ -4158,10 +4891,17 @@ function App() {
         event.stopPropagation();
         return;
       }
+      if (localEncryptModal) {
+        setLocalEncryptModal(null);
+        setLocalEncryptPassphrase("");
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
     };
     document.documentElement.addEventListener("keydown", onKeyDown, true);
     return () => document.documentElement.removeEventListener("keydown", onKeyDown, true);
-  }, [accountNameModal.open, accountAlertsModal.open, accountAlertsDeleteRecurringId, apiTokenCreateModal, deleteAccountModal.open, exportModal.open]);
+  }, [accountNameModal.open, accountAlertsModal.open, accountAlertsDeleteRecurringId, apiTokenCreateModal, deleteAccountModal.open, exportModal.open, switchToLocalModalOpen, switchToCloudModalOpen, localEncryptModal]);
 
   useEffect(() => {
     if (accountAlertsDeleteRecurringId == null) return;
@@ -4183,23 +4923,183 @@ function App() {
     const rawStorageMode = profile?.storage_mode;
     const storageMode: "cloud" | "local" =
       rawStorageMode === "local" ? "local" : "cloud";
-    setProfileForm({
-      display_name: profile?.display_name ?? "",
-      country: profile?.country ?? "",
-      telegram_chat_id: profile?.telegram_chat_id ?? "",
-      show_account_balances: profile?.show_account_balances ?? true,
-      auto_detection_enabled: profile?.auto_detection_enabled ?? true,
-      telegram_alerts_enabled: profile?.telegram_alerts_enabled ?? true,
-      slack_webhook_url: profile?.slack_webhook_url ?? "",
-      slack_alerts_enabled: profile?.slack_alerts_enabled ?? false,
-      weekly_emails_enabled: profile?.weekly_emails_enabled ?? true,
-      storage_mode: storageMode,
+    setProfileForm((prev) => {
+      // While switch-to-local modal is open, keep showing "local" so export/cancel don't revert the choice
+      const keepLocal =
+        switchToLocalModalOpen && prev.storage_mode === "local";
+      return {
+        display_name: profile?.display_name ?? "",
+        country: profile?.country ?? "",
+        telegram_chat_id: profile?.telegram_chat_id ?? "",
+        show_account_balances: profile?.show_account_balances ?? true,
+        auto_detection_enabled: profile?.auto_detection_enabled ?? true,
+        telegram_alerts_enabled: profile?.telegram_alerts_enabled ?? true,
+        slack_webhook_url: profile?.slack_webhook_url ?? "",
+        slack_alerts_enabled: profile?.slack_alerts_enabled ?? false,
+        weekly_emails_enabled: profile?.weekly_emails_enabled ?? true,
+        storage_mode: keepLocal ? "local" : storageMode,
+      };
     });
-  }, [profile]);
+  }, [profile, switchToLocalModalOpen]);
 
   useEffect(() => {
-    if (activeSection === "profile") setProfileTab("user");
+    if (activeSection === "profile") {
+      if (profileTabFromUrlRef.current) {
+        setProfileTab(profileTabFromUrlRef.current);
+        profileTabFromUrlRef.current = null;
+      } else {
+        setProfileTab("user");
+      }
+    }
   }, [activeSection]);
+
+  const onboardingWizardUserKey = profile?.emails?.find((e) => e.is_primary)?.email ?? profile?.emails?.[0]?.email ?? null;
+  useEffect(() => {
+    if (!onboardingWizardUserKey) return;
+    const key = `onboarding_wizard_${onboardingWizardUserKey}`;
+    onboardingWizardStorageKeyRef.current = key;
+    try {
+      const stepsRaw = window.localStorage.getItem(`${key}_steps`);
+      if (stepsRaw) {
+        const arr = JSON.parse(stepsRaw) as unknown;
+        if (Array.isArray(arr)) {
+          setOnboardingWizardCompletedSteps(new Set(arr.filter((s): s is OnboardingStepId => ONBOARDING_WIZARD_STEP_ORDER.includes(s))));
+        }
+      }
+      const minRaw = window.localStorage.getItem(`${key}_minimized`);
+      setOnboardingWizardMinimized(minRaw === "1");
+      const dismissedRaw = window.localStorage.getItem(`${key}_dismissed`);
+      setWizardDismissed(dismissedRaw === "1");
+    } catch {
+      // ignore
+    }
+  }, [onboardingWizardUserKey]);
+  useEffect(() => {
+    const key = onboardingWizardStorageKeyRef.current;
+    if (!key) return;
+    try {
+      window.localStorage.setItem(`${key}_steps`, JSON.stringify([...onboardingWizardCompletedSteps]));
+    } catch {
+      // ignore
+    }
+  }, [onboardingWizardCompletedSteps]);
+  useEffect(() => {
+    const key = onboardingWizardStorageKeyRef.current;
+    if (!key) return;
+    try {
+      window.localStorage.setItem(`${key}_minimized`, onboardingWizardMinimized ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, [onboardingWizardMinimized]);
+  useEffect(() => {
+    const key = onboardingWizardStorageKeyRef.current;
+    if (!key) return;
+    try {
+      window.localStorage.setItem(`${key}_dismissed`, wizardDismissed ? "1" : "0");
+    } catch {
+      // ignore
+    }
+  }, [wizardDismissed]);
+
+  const navigateToOnboardingStep = useCallback((stepId: OnboardingStepId) => {
+    if (stepId === "account") {
+      setActiveSection("accounts");
+    } else if (stepId === "categories") {
+      setSettingsInitialTab("categories");
+      setActiveSection("settings");
+    } else if (stepId === "tags") {
+      setSettingsInitialTab("tags");
+      setActiveSection("settings");
+    } else {
+      setActiveSection("profile");
+      setProfileTab(stepId === "country" ? "user" : (stepId as ProfileTabId));
+    }
+  }, []);
+
+  const handleOnboardingWizardStepNavigate = useCallback((stepIndex: number) => {
+    const stepId = ONBOARDING_WIZARD_STEP_ORDER[stepIndex];
+    if (stepId !== undefined) navigateToOnboardingStep(stepId);
+  }, [navigateToOnboardingStep]);
+
+  const handleOnboardingWizardStepToggle = useCallback((stepId: OnboardingStepId) => {
+    setOnboardingWizardCompletedSteps((prev) => {
+      const next = new Set(prev);
+      const isDone = next.has(stepId);
+      if (isDone) {
+        next.delete(stepId);
+      } else {
+        next.add(stepId);
+        const idx = ONBOARDING_WIZARD_STEP_ORDER.indexOf(stepId);
+        const nextId = ONBOARDING_WIZARD_STEP_ORDER[idx + 1];
+        if (nextId) navigateToOnboardingStep(nextId);
+      }
+      return next;
+    });
+  }, [navigateToOnboardingStep]);
+  const handleOnboardingWizardDismiss = useCallback(async () => {
+    setWizardDismissed(true);
+    const key = onboardingWizardStorageKeyRef.current;
+    if (key) {
+      try {
+        window.localStorage.setItem(`${key}_dismissed`, "1");
+      } catch {
+        // ignore
+      }
+    }
+    if (!apiToken || !apiBase || !profile?.needs_onboarding) return;
+    try {
+      await fetch(`${apiBase}/api/onboarding/complete`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiToken}` },
+      });
+      const res = await fetch(`${apiBase}/api/me`, { headers: { Authorization: `Bearer ${apiToken}` } });
+      if (res.ok) setProfile(await res.json());
+    } catch {
+      // keep wizard dismissed locally
+    }
+  }, [apiToken, apiBase, profile?.needs_onboarding]);
+
+  useEffect(() => {
+    if (profile?.storage_mode !== "local") return;
+    isLocalDataEncrypted().then((encrypted) => {
+      setLocalEncryptionStatus({ encrypted, unlocked: isLocalDataUnlocked() });
+    });
+  }, [profile?.storage_mode, profileTab, localEncryptModal]);
+
+  useEffect(() => {
+    if (profile?.storage_mode !== "local") return;
+    let cancelled = false;
+    (async () => {
+      const restored = await restoreLocalEncryptionFromSession();
+      if (cancelled) return;
+      if (restored) {
+        setLocalEncryptionStatus({ encrypted: true, unlocked: true });
+        loadRecentTransactions();
+        if (activeSection === "transactions") loadAllTransactions();
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [profile?.storage_mode, loadRecentTransactions, loadAllTransactions, activeSection]);
+
+  useEffect(() => {
+    if (activeSection !== "profile" || profile?.storage_mode !== "local") return;
+    let cancelled = false;
+    (async () => {
+      const encrypted = await isLocalDataEncrypted();
+      if (cancelled) return;
+      if (!encrypted) return;
+      if (isLocalDataUnlocked()) return;
+      const restored = await restoreLocalEncryptionFromSession();
+      if (cancelled) return;
+      if (restored) {
+        setLocalEncryptionStatus((s) => (s ? { ...s, unlocked: true } : { encrypted: true, unlocked: true }));
+        return;
+      }
+      setLocalEncryptModal("unlock");
+    })();
+    return () => { cancelled = true; };
+  }, [activeSection, profile?.storage_mode]);
 
   // When user sends the link code to the bot, profile gets telegram_chat_id; clear the code UI
   useEffect(() => {
@@ -4257,8 +5157,52 @@ function App() {
     }
   };
 
-  const handleProfileSave = async () => {
-    if (!apiToken) return;
+  const fetchAllCloudTransactions = useCallback(async (): Promise<LocalTransaction[]> => {
+    if (!apiToken) return [];
+    const limit = 500;
+    let offset = 0;
+    const all: LocalTransaction[] = [];
+    for (;;) {
+      const params = new URLSearchParams({ limit: String(limit), offset: String(offset) });
+      const res = await fetch(`${apiBase}/api/transactions?${params}`, {
+        headers: { Authorization: `Bearer ${apiToken}` },
+      });
+      if (!res.ok) break;
+      const data = await res.json();
+      const items = data.items ?? [];
+      for (const tx of items) {
+        all.push({
+          local_id: `local_${tx.bank_account_id}_${tx.transaction_id}`,
+          id: tx.id,
+          bank_account_id: tx.bank_account_id,
+          institution_name: tx.institution_name,
+          account_name: tx.account_name,
+          account_friendly_name: tx.account_friendly_name,
+          transaction_id: tx.transaction_id,
+          status: tx.status ?? "booked",
+          amount: tx.amount,
+          currency: tx.currency ?? "",
+          booking_date: tx.booking_date,
+          value_date: tx.value_date,
+          posting_date: tx.posting_date,
+          description: tx.description,
+          include_in_totals: tx.include_in_totals !== false,
+          category_id: tx.category_id,
+          category_name: tx.category_name,
+          tags: tx.tags ?? [],
+          is_new: tx.is_new !== false,
+          comment: tx.comment,
+          has_alert: tx.has_alert === true,
+        });
+      }
+      if (items.length < limit) break;
+      offset += limit;
+    }
+    return all;
+  }, [apiBase, apiToken]);
+
+  const doProfilePatch = useCallback(async () => {
+    if (!apiToken) return false;
     const response = await fetch(`${apiBase}/api/me`, {
       method: "PATCH",
       headers: {
@@ -4280,15 +5224,95 @@ function App() {
     });
     if (response.ok) {
       const data = await response.json();
-      // Preserve slack_webhook_url in profile if API omits it (so form sync keeps the value)
       if (data.slack_webhook_url === undefined && (profileForm.slack_webhook_url?.trim() ?? "")) {
         data.slack_webhook_url = profileForm.slack_webhook_url.trim();
       }
       setProfile(data);
       showToast(t.profileSaved, "success");
-    } else {
-      showToast(t.profileSaveError, "error");
+      return true;
     }
+    showToast(t.profileSaveError, "error");
+    return false;
+  }, [apiBase, apiToken, profileForm, t.profileSaved, t.profileSaveError, showToast]);
+
+  const handleProfileSave = async () => {
+    if (!apiToken) return;
+    const switchingToLocal = profile?.storage_mode === "cloud" && profileForm.storage_mode === "local";
+    const switchingToCloud = profile?.storage_mode === "local" && profileForm.storage_mode === "cloud";
+
+    if (switchingToLocal) {
+      try {
+        const cloudTransactions = await fetchAllCloudTransactions();
+        await localTransactionsClear();
+        if (cloudTransactions.length > 0) {
+          await localTransactionsMergeFromFetch(cloudTransactions);
+        }
+        setSwitchToLocalModalOpen(true);
+      } catch (e) {
+        showToast("Could not copy cloud data to this device.", "error");
+      }
+      return;
+    }
+
+    if (switchingToCloud) {
+      if (localEncryptionStatus?.encrypted && !localEncryptionStatus?.unlocked) {
+        setPendingAfterUnlock({ type: "switchToCloud" });
+        setLocalEncryptModal("unlock");
+        return;
+      }
+      const localList = await localTransactionsGetAll();
+      if (localList.length === 0) {
+        setSwitchToCloudModalOpen(true);
+        return;
+      }
+      try {
+        const importPayload = localList.map((t) => ({
+          bank_account_id: t.bank_account_id,
+          transaction_id: t.transaction_id,
+          amount: t.amount,
+          currency: t.currency ?? "",
+          booking_date: t.booking_date ?? null,
+          value_date: t.value_date ?? null,
+          posting_date: t.posting_date ?? null,
+          description: t.description ?? null,
+          status: t.status ?? "booked",
+          include_in_totals: t.include_in_totals !== false,
+          category_id: t.category_id ?? null,
+          tag_ids: (t.tags ?? []).map((tag) => tag.id),
+          is_new: t.is_new !== false,
+          comment: t.comment ?? null,
+        }));
+        const importRes = await fetch(`${apiBase}/api/transactions/import`, {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiToken}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ transactions: importPayload }),
+        });
+        if (importRes.ok) {
+          const data = await importRes.json();
+          showToast(
+            data.imported != null ? `${data.imported} transactions uploaded to cloud` : "Data uploaded",
+            "success"
+          );
+        } else if (importRes.status === 403) {
+          setActiveSection("profile");
+          setProfileTab("subscription");
+          showToast(t.subscriptionNoAccess, "error");
+        }
+      } catch {
+        showToast("Could not upload local data; you can import the JSON file later after switching.", "warning");
+      }
+      const ok = await doProfilePatch();
+      if (ok) {
+        loadRecentTransactions();
+        if (activeSection === "transactions") loadAllTransactions();
+      }
+      return;
+    }
+
+    await doProfilePatch();
   };
 
   const handleUpdateAccountName = async () => {
@@ -4803,11 +5827,13 @@ function App() {
   ];
 
   return (
-    <div className="min-h-screen bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">
+    <div className="min-h-screen min-w-0 overflow-x-hidden bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">
       <a href="#main" className="skip-to-main">
         {t.skipToMain}
       </a>
-      <header className="fixed top-0 z-50 w-full border-b border-slate-200 bg-slate-50/90 backdrop-blur dark:border-slate-800 dark:bg-slate-900/90">
+      <header
+        className={`fixed top-0 z-50 w-full border-b border-slate-200 bg-slate-50/90 backdrop-blur transition-transform duration-300 ease-out dark:border-slate-800 dark:bg-slate-900/90 ${mobileHeaderVisible ? "translate-y-0" : "-translate-y-full md:translate-y-0"}`}
+      >
         <div className="mx-auto flex max-w-6xl min-w-0 items-center justify-between gap-2 px-4 py-4 sm:px-6">
           <button
             type="button"
@@ -4905,20 +5931,22 @@ function App() {
             <button
               className="user-menu-btn"
               type="button"
-              aria-label={t.menuProfile}
-                onClick={() => {
-                  if (userMenuTimerRef.current) {
-                    window.clearTimeout(userMenuTimerRef.current);
-                    userMenuTimerRef.current = null;
-                  }
-                  setUserMenuOpen((open) => !open);
-                }}
+              title={isAuthenticated ? t.menuProfile : t.menuLogin}
+              aria-label={isAuthenticated ? t.menuProfile : t.menuLogin}
+              onClick={() => {
+                if (userMenuTimerRef.current) {
+                  window.clearTimeout(userMenuTimerRef.current);
+                  userMenuTimerRef.current = null;
+                }
+                setUserMenuOpen((open) => !open);
+              }}
             >
-                <i className="fa-solid fa-circle-user"></i>
-                {isAuthenticated && user?.given_name && (
-                  <span className="ml-2 hidden md:inline text-sm">{user.given_name}</span>
-                )}
-              </button>
+              <i
+                className={`fa-solid ${isAuthenticated ? "fa-user" : "fa-user-slash"}`}
+                aria-hidden
+                style={{ color: isAuthenticated ? "var(--primary)" : "var(--text-secondary)" }}
+              />
+            </button>
             <div className={`user-menu-content ${userMenuOpen ? "is-open" : ""}`}>
                 {!isAuthenticated ? (
                 <>
@@ -4980,6 +6008,7 @@ function App() {
                       type="button"
                       onClick={() => {
                         setUserMenuLocked(true);
+                        setSettingsInitialTab(null);
                         setActiveSection("settings");
                         setUserMenuOpen(false);
                       }}
@@ -5200,6 +6229,7 @@ function App() {
 
                 <button
                   onClick={() => {
+                    setSettingsInitialTab(null);
                     setActiveSection("settings");
                     setMobileMenuOpen(false);
                   }}
@@ -5434,6 +6464,448 @@ function App() {
                 <i className="fa-solid fa-xmark" />
               </button>
             </div>
+          </div>
+        </div>
+      ) : null}
+      {switchToLocalModalOpen ? (
+        <div
+          className="modal-overlay"
+          onClick={() => setSwitchToLocalModalOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="switch-to-local-title"
+        >
+          <div
+            className="modal-card"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: "28rem" }}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <h2 id="switch-to-local-title" className="text-lg font-semibold" style={{ color: "var(--text)" }}>
+                <i className="fa-solid fa-database me-2" aria-hidden style={{ color: "var(--text-secondary)" }} />
+                {t.profileSwitchToLocalTitle}
+              </h2>
+              <button
+                type="button"
+                className="inline-flex items-center justify-center p-2 rounded border border-solid transition-colors min-w-[2.25rem]"
+                style={{ borderWidth: 1, background: "var(--surface-hover)", borderColor: "var(--border)", color: "var(--text)" }}
+                title={t.modalCancel}
+                aria-label={t.modalCancel}
+                onClick={() => setSwitchToLocalModalOpen(false)}
+              >
+                <i className="fa-solid fa-times" aria-hidden />
+              </button>
+            </div>
+            <p className="mt-2 text-sm" style={{ color: "var(--text-secondary)" }}>
+              {t.profileSwitchToLocalCopied}
+            </p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="inline-flex items-center justify-center p-2 rounded border border-solid transition-colors min-w-[2.25rem]"
+                style={{ borderWidth: 1, borderColor: "var(--border)", background: "var(--surface-hover)", color: "var(--text)" }}
+                title={t.profileDownloadJson}
+                aria-label={t.profileDownloadJson}
+                onClick={async () => {
+                  try {
+                    const json = await localTransactionsExportJSON();
+                    downloadBlob(new Blob([json], { type: "application/json" }), `eurodata-backup-${new Date().toISOString().slice(0, 10)}.json`);
+                    showToast(t.profileDownloadJson, "success");
+                  } catch {
+                    showToast("Export failed", "error");
+                  }
+                }}
+              >
+                <i className="fa-solid fa-file-code" aria-hidden />
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center justify-center p-2 rounded border border-solid transition-colors min-w-[2.25rem]"
+                style={{ borderWidth: 1, borderColor: "var(--border)", background: "var(--surface-hover)", color: "var(--text)" }}
+                title={t.profileDownloadCsv}
+                aria-label={t.profileDownloadCsv}
+                onClick={async () => {
+                  try {
+                    const csv = await localTransactionsExportCSV();
+                    downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8" }), `eurodata-backup-${new Date().toISOString().slice(0, 10)}.csv`);
+                    showToast(t.profileDownloadCsv, "success");
+                  } catch {
+                    showToast("Export failed", "error");
+                  }
+                }}
+              >
+                <i className="fa-solid fa-file-csv" aria-hidden />
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center justify-center p-2 rounded border border-solid transition-colors min-w-[2.25rem]"
+                style={{ borderWidth: 1, borderColor: "var(--border)", background: "var(--surface-hover)", color: "var(--text)" }}
+                title={t.profileDownloadOfx}
+                aria-label={t.profileDownloadOfx}
+                onClick={async () => {
+                  try {
+                    const ofx = await localTransactionsExportOFX();
+                    downloadBlob(new Blob([ofx], { type: "application/x-ofx" }), `eurodata-backup-${new Date().toISOString().slice(0, 10)}.ofx`);
+                    showToast(t.profileDownloadOfx, "success");
+                  } catch {
+                    showToast("Export failed", "error");
+                  }
+                }}
+              >
+                <i className="fa-solid fa-file-invoice" aria-hidden />
+              </button>
+            </div>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="inline-flex items-center justify-center p-2 rounded border border-solid transition-colors min-w-[2.25rem]"
+                style={{ borderWidth: 1, borderColor: "var(--border)", background: "var(--surface-hover)", color: "var(--text)" }}
+                title={t.modalCancel}
+                aria-label={t.modalCancel}
+                onClick={() => setSwitchToLocalModalOpen(false)}
+              >
+                <i className="fa-solid fa-times" aria-hidden />
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center justify-center p-2 rounded border border-solid transition-colors min-w-[2.25rem]"
+                style={{ borderWidth: 1, borderColor: "var(--primary)", background: "var(--primary)", color: "white" }}
+                title={t.profileSwitchToLocalConfirm}
+                aria-label={t.profileSwitchToLocalConfirm}
+                onClick={async () => {
+                  if (!apiToken) return;
+                  try {
+                    await fetch(`${apiBase}/api/transactions`, { method: "DELETE", headers: { Authorization: `Bearer ${apiToken}` } });
+                    const ok = await doProfilePatch();
+                    if (ok) {
+                      setSwitchToLocalModalOpen(false);
+                      loadRecentTransactions();
+                      if (activeSection === "transactions") loadAllTransactions();
+                    }
+                  } catch {
+                    showToast(t.profileSaveError, "error");
+                  }
+                }}
+              >
+                <i className="fa-solid fa-check" aria-hidden />
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {switchToCloudModalOpen ? (
+        <div
+          className="modal-overlay"
+          onClick={() => setSwitchToCloudModalOpen(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="switch-to-cloud-title"
+        >
+          <div
+            className="modal-card"
+            onClick={(e) => e.stopPropagation()}
+            style={{ maxWidth: "28rem" }}
+          >
+            <div className="flex items-start justify-between gap-2">
+              <h2 id="switch-to-cloud-title" className="text-lg font-semibold" style={{ color: "var(--text)" }}>
+                <i className="fa-solid fa-cloud me-2" aria-hidden style={{ color: "var(--text-secondary)" }} />
+                {t.profileSwitchToCloudTitle}
+              </h2>
+              <button
+                type="button"
+                className="inline-flex items-center justify-center p-2 rounded border border-solid transition-colors min-w-[2.25rem]"
+                style={{ borderWidth: 1, background: "var(--surface-hover)", borderColor: "var(--border)", color: "var(--text)" }}
+                title={t.modalCancel}
+                aria-label={t.modalCancel}
+                onClick={() => setSwitchToCloudModalOpen(false)}
+              >
+                <i className="fa-solid fa-times" aria-hidden />
+              </button>
+            </div>
+            <p className="mt-2 text-sm" style={{ color: "var(--text-secondary)" }}>
+              {t.profileSwitchToCloudNoData}
+            </p>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+              <span className="text-sm" style={{ color: "var(--text-secondary)" }}>{t.profileImportData}</span>
+              <button
+                type="button"
+                className="inline-flex items-center justify-center p-2 rounded border border-solid transition-colors min-w-[2.25rem]"
+                style={{ borderWidth: 1, borderColor: "var(--border)", background: "var(--surface-hover)", color: "var(--text)" }}
+                title={t.profileImportData}
+                aria-label={t.profileImportData}
+                onClick={() => switchToCloudImportInputRef.current?.click()}
+              >
+                <i className="fa-solid fa-file-import" aria-hidden />
+              </button>
+            </div>
+            <input
+              ref={switchToCloudImportInputRef}
+              key={switchToCloudFileInputKey}
+              type="file"
+              accept=".json,.csv,.ofx,application/json,text/csv,application/x-ofx"
+              className="sr-only"
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const name = (file.name || "").toLowerCase();
+                const isCsv = name.endsWith(".csv");
+                const isOfx = name.endsWith(".ofx");
+                try {
+                  const text = await file.text();
+                  if (isCsv) {
+                    const { imported } = await localTransactionsImportFromCSV(text);
+                    if (imported === 0) {
+                      e.target.value = "";
+                      return;
+                    }
+                  } else if (isOfx) {
+                    const { imported } = await localTransactionsImportFromOFX(text);
+                    if (imported === 0) {
+                      e.target.value = "";
+                      return;
+                    }
+                  } else {
+                    await localTransactionsImportFromJSON(text);
+                  }
+                  const localList = await localTransactionsGetAll();
+                  if (localList.length > 0) {
+                    const importPayload = localList.map((t) => ({
+                      bank_account_id: t.bank_account_id,
+                      transaction_id: t.transaction_id,
+                      amount: t.amount,
+                      currency: t.currency ?? "",
+                      booking_date: t.booking_date ?? null,
+                      value_date: t.value_date ?? null,
+                      posting_date: t.posting_date ?? null,
+                      description: t.description ?? null,
+                      status: t.status ?? "booked",
+                      include_in_totals: t.include_in_totals !== false,
+                      category_id: t.category_id ?? null,
+                      tag_ids: (t.tags ?? []).map((tag) => tag.id),
+                      is_new: t.is_new !== false,
+                      comment: t.comment ?? null,
+                    }));
+                    const importRes = await fetch(`${apiBase}/api/transactions/import`, {
+                      method: "POST",
+                      headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+                      body: JSON.stringify({ transactions: importPayload }),
+                    });
+                    if (importRes.ok) {
+                      const data = await importRes.json();
+                      showToast(data.imported != null ? `${data.imported} transactions uploaded` : "Data uploaded", "success");
+                    } else if (importRes.status === 403) {
+                      setActiveSection("profile");
+                      setProfileTab("subscription");
+                      showToast(t.subscriptionNoAccess, "error");
+                    }
+                  }
+                  const ok = await doProfilePatch();
+                  if (ok) {
+                    setSwitchToCloudModalOpen(false);
+                    setSwitchToCloudFileInputKey((k) => k + 1);
+                    loadRecentTransactions();
+                    if (activeSection === "transactions") loadAllTransactions();
+                  }
+                } catch {
+                  showToast("Import failed", "error");
+                }
+                e.target.value = "";
+              }}
+            />
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                type="button"
+                className="inline-flex items-center justify-center p-2 rounded border border-solid transition-colors min-w-[2.25rem]"
+                style={{ borderWidth: 1, borderColor: "var(--border)", background: "var(--surface-hover)", color: "var(--text)" }}
+                title={t.modalCancel}
+                aria-label={t.modalCancel}
+                onClick={() => setSwitchToCloudModalOpen(false)}
+              >
+                <i className="fa-solid fa-times" aria-hidden />
+              </button>
+              <button
+                type="button"
+                className="inline-flex items-center justify-center p-2 rounded border border-solid transition-colors min-w-[2.25rem]"
+                style={{ borderWidth: 1, borderColor: "var(--primary)", background: "var(--primary)", color: "white" }}
+                title={t.profileSwitchToCloudWithoutData}
+                aria-label={t.profileSwitchToCloudWithoutData}
+                onClick={async () => {
+                  const ok = await doProfilePatch();
+                  if (ok) setSwitchToCloudModalOpen(false);
+                }}
+              >
+                <i className="fa-solid fa-check" aria-hidden />
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {localEncryptModal ? (
+        <div
+          className="modal-overlay"
+          onClick={() => { setPendingAfterUnlock(null); setLocalEncryptModal(null); setLocalEncryptPassphrase(""); }}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="local-encrypt-modal-title"
+        >
+          <div className="modal-card" onClick={(e) => e.stopPropagation()} style={{ maxWidth: "28rem" }}>
+            <div className="flex items-start justify-between gap-2">
+              <h2 id="local-encrypt-modal-title" className="text-lg font-semibold" style={{ color: "var(--text)" }}>
+                <i className={`fa-solid ${localEncryptModal === "unlock" ? "fa-key" : "fa-lock"} me-2`} aria-hidden style={{ color: "var(--text-secondary)" }} />
+                {localEncryptModal === "unlock" ? t.profileLocalUnlock : localEncryptModal === "lock" ? t.profileLocalLock : t.profileLocalEncrypt}
+              </h2>
+              <button
+                type="button"
+                className="inline-flex items-center justify-center p-2 rounded border border-solid transition-colors min-w-[2.25rem]"
+                style={{ borderWidth: 1, background: "var(--surface-hover)", borderColor: "var(--border)", color: "var(--text)" }}
+                title={t.modalCancel}
+                aria-label={t.modalCancel}
+                onClick={() => { setPendingAfterUnlock(null); setLocalEncryptModal(null); setLocalEncryptPassphrase(""); }}
+              >
+                <i className="fa-solid fa-times" aria-hidden />
+              </button>
+            </div>
+            <p className="mt-2 text-sm" style={{ color: "var(--text-secondary)" }}>
+              {localEncryptModal === "unlock" ? t.profileLocalUnlockHelp : localEncryptModal === "lock" ? t.profileLocalLockConfirmHelp : t.profileLocalEncryptHelp}
+            </p>
+            <form
+              className="mt-4"
+              onSubmit={async (e) => {
+                e.preventDefault();
+                const pass = localEncryptPassphrase.trim();
+                if (!pass) return;
+                if (localEncryptModal === "unlock") {
+                  const ok = await setLocalEncryptionKey(pass);
+                  if (ok) {
+                    setLocalEncryptionStatus((s) => (s ? { ...s, unlocked: true } : null));
+                    loadRecentTransactions();
+                    if (activeSection === "transactions") loadAllTransactions();
+                    const pending = pendingAfterUnlock;
+                    setPendingAfterUnlock(null);
+                    if (pending?.type === "export") {
+                      try {
+                        const date = new Date().toISOString().slice(0, 10);
+                        if (pending.format === "json") {
+                          const json = await localTransactionsExportJSON();
+                          downloadBlob(new Blob([json], { type: "application/json" }), `eurodata-transactions-${date}.json`);
+                          showToast(t.profileDownloadJson, "success");
+                        } else if (pending.format === "csv") {
+                          const csv = await localTransactionsExportCSV();
+                          downloadBlob(new Blob([csv], { type: "text/csv;charset=utf-8" }), `eurodata-transactions-${date}.csv`);
+                          showToast(t.profileDownloadCsv, "success");
+                        } else {
+                          const ofx = await localTransactionsExportOFX();
+                          downloadBlob(new Blob([ofx], { type: "application/x-ofx" }), `eurodata-transactions-${date}.ofx`);
+                          showToast(t.profileDownloadOfx, "success");
+                        }
+                      } catch {
+                        showToast("Export failed", "error");
+                      }
+                    } else if (pending?.type === "switchToCloud") {
+                      const localList = await localTransactionsGetAll();
+                      if (localList.length === 0) {
+                        setSwitchToCloudModalOpen(true);
+                      } else {
+                        try {
+                          const importPayload = localList.map((t) => ({
+                            bank_account_id: t.bank_account_id,
+                            transaction_id: t.transaction_id,
+                            amount: t.amount,
+                            currency: t.currency ?? "",
+                            booking_date: t.booking_date ?? null,
+                            value_date: t.value_date ?? null,
+                            posting_date: t.posting_date ?? null,
+                            description: t.description ?? null,
+                            status: t.status ?? "booked",
+                            include_in_totals: t.include_in_totals !== false,
+                            category_id: t.category_id ?? null,
+                            tag_ids: (t.tags ?? []).map((tag) => tag.id),
+                            is_new: t.is_new !== false,
+                            comment: t.comment ?? null,
+                          }));
+                          const importRes = await fetch(`${apiBase}/api/transactions/import`, {
+                            method: "POST",
+                            headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+                            body: JSON.stringify({ transactions: importPayload }),
+                          });
+                          if (importRes.ok) {
+                            const data = await importRes.json();
+                            showToast(data.imported != null ? `${data.imported} transactions uploaded to cloud` : "Data uploaded", "success");
+                          } else if (importRes.status === 403) {
+                            setActiveSection("profile");
+                            setProfileTab("subscription");
+                            showToast(t.subscriptionNoAccess, "error");
+                          }
+                        } catch {
+                          showToast("Could not upload local data; you can import the file later after switching.", "warning");
+                        }
+                        const patchOk = await doProfilePatch();
+                        if (patchOk) {
+                          loadRecentTransactions();
+                          if (activeSection === "transactions") loadAllTransactions();
+                        }
+                      }
+                    }
+                    setLocalEncryptModal(null);
+                    setLocalEncryptPassphrase("");
+                  } else {
+                    showToast("Wrong passphrase", "error");
+                  }
+                } else if (localEncryptModal === "lock") {
+                  const ok = await setLocalEncryptionKey(pass);
+                  if (ok) {
+                    clearLocalEncryptionKey();
+                    setLocalEncryptionStatus((s) => (s ? { ...s, unlocked: false } : null));
+                    setLocalEncryptModal(null);
+                    setLocalEncryptPassphrase("");
+                  } else {
+                    showToast("Wrong passphrase", "error");
+                  }
+                } else {
+                  try {
+                    await enableLocalEncryption(pass);
+                    setLocalEncryptModal(null);
+                    setLocalEncryptPassphrase("");
+                    setLocalEncryptionStatus({ encrypted: true, unlocked: true });
+                    showToast(t.profileSaved, "success");
+                  } catch (err) {
+                    showToast("Encryption failed", "error");
+                  }
+                }
+              }}
+            >
+              <input
+                ref={localEncryptPassphraseInputRef}
+                type="password"
+                className="w-full rounded-lg border px-3 py-2 text-sm"
+                style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text)" }}
+                placeholder={t.profilePassphrasePlaceholder}
+                value={localEncryptPassphrase}
+                onChange={(e) => setLocalEncryptPassphrase(e.target.value)}
+              />
+              <div className="mt-4 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center p-2 rounded border border-solid transition-colors min-w-[2.25rem]"
+                  style={{ borderWidth: 1, borderColor: "var(--border)", background: "var(--surface-hover)", color: "var(--text)" }}
+                  title={t.modalCancel}
+                  aria-label={t.modalCancel}
+                  onClick={() => { setPendingAfterUnlock(null); setLocalEncryptModal(null); setLocalEncryptPassphrase(""); }}
+                >
+                  <i className="fa-solid fa-times" aria-hidden />
+                </button>
+                <button
+                  type="submit"
+                  className="inline-flex items-center justify-center p-2 rounded border border-solid transition-colors min-w-[2.25rem]"
+                  style={{ borderWidth: 1, borderColor: "var(--primary)", background: "var(--primary)", color: "white" }}
+                  title={localEncryptModal === "unlock" ? t.profileUnlock : localEncryptModal === "lock" ? t.profileLocalLock : t.profileSetPassphrase}
+                  aria-label={localEncryptModal === "unlock" ? t.profileUnlock : localEncryptModal === "lock" ? t.profileLocalLock : t.profileSetPassphrase}
+                  disabled={!localEncryptPassphrase.trim()}
+                >
+                  <i className={`fa-solid ${localEncryptModal === "unlock" ? "fa-key" : localEncryptModal === "lock" ? "fa-lock" : "fa-check"}`} aria-hidden />
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       ) : null}
@@ -6165,7 +7637,8 @@ function App() {
         {!accessDeniedFromAuth0 && (
           <>
         {activeSection === "privacy" ? (
-          <PrivacyPolicy
+          <Suspense fallback={<SectionFallback />}>
+            <LazyPrivacyPolicy
             onBack={() => {
               window.history.pushState({}, "", "/");
               setActiveSection(isAuthenticated ? "transactions" : "home");
@@ -6195,6 +7668,7 @@ function App() {
               privacyContactIntro: t.privacyContactIntro,
             }}
           />
+          </Suspense>
         ) : null}
         {activeSection !== "privacy" && isAuthenticated && authError ? (
           <section className="mx-auto max-w-3xl px-6 py-24">
@@ -6209,7 +7683,7 @@ function App() {
           </section>
         ) : null}
 
-        {isAuthenticated && activeSection !== "profile" && (profile?.needs_onboarding || activeSection === "accounts") ? (
+        {isAuthenticated && activeSection !== "profile" && activeSection !== "settings" && (profile?.needs_onboarding || activeSection === "accounts") && !(activeSection === "transactions" && bankAccounts.length > 0) && !(activeSection === "insights" && bankAccounts.length > 0) && !(activeSection === "recurring" && bankAccounts.length > 0) ? (
           <div className="relative">
             <button
               type="button"
@@ -6221,7 +7695,15 @@ function App() {
             >
               <i className="fa-regular fa-circle-question" aria-hidden />
             </button>
-          <Onboarding
+          <div className="pt-14">
+          <Suspense fallback={<SectionFallback />}>
+          <LazyOnboarding
+            hasSubscriptionAccess={profile?.has_subscription_access ?? true}
+            onSubscriptionRequired={() => {
+              setActiveSection("profile");
+              setProfileTab("subscription");
+              showToast(t.subscriptionNoAccess, "error");
+            }}
             t={{
               onboardingTitle: t.onboardingTitle,
               onboardingBody: t.onboardingBody,
@@ -6322,11 +7804,13 @@ function App() {
               setActiveSection("home");
             }}
           />
+          </Suspense>
+          </div>
           </div>
         ) : null}
 
         {/* Insights Section */}
-        {isAuthenticated && !profile?.needs_onboarding && activeSection === "insights" ? (
+        {isAuthenticated && (bankAccounts.length > 0 || !profile?.needs_onboarding) && activeSection === "insights" ? (
           <div className="relative">
             <button
               type="button"
@@ -6338,7 +7822,8 @@ function App() {
             >
               <i className="fa-regular fa-circle-question" aria-hidden />
             </button>
-            <Insights
+            <Suspense fallback={<SectionFallback />}>
+            <LazyInsights
               apiBase={apiBase}
               apiToken={apiToken}
               bankAccounts={bankAccounts}
@@ -6347,13 +7832,16 @@ function App() {
               locale={getLocale()}
               t={t}
               showToast={showToast}
+              storageMode={profile?.storage_mode}
             />
+            </Suspense>
           </div>
         ) : null}
 
         {/* Recurring transactions (B012 Phase 4) */}
-        {isAuthenticated && !profile?.needs_onboarding && activeSection === "recurring" && apiToken ? (
-          <RecurringTransactions
+        {isAuthenticated && (bankAccounts.length > 0 || !profile?.needs_onboarding) && activeSection === "recurring" && apiToken ? (
+          <Suspense fallback={<SectionFallback />}>
+          <LazyRecurringTransactions
             apiBase={apiBase}
             token={apiToken}
             accounts={recurringAccounts}
@@ -6463,9 +7951,10 @@ function App() {
             }}
             onToast={showToast}
           />
+          </Suspense>
         ) : null}
 
-        {isAuthenticated && !profile?.needs_onboarding && activeSection === "transactions" ? (
+        {isAuthenticated && activeSection === "transactions" && (bankAccounts.length > 0 || !profile?.needs_onboarding) ? (
           <div className="relative">
             <button
               type="button"
@@ -6581,20 +8070,30 @@ function App() {
             {/* Account cards: always shown when there are accounts; balance only when profile has show_account_balances */}
             {bankAccounts.length > 0 ? (
               <section className="mx-auto max-w-6xl px-6 pt-10 pb-4">
-                {profile?.show_account_balances ? (
-                  <div className="flex items-center justify-end gap-3 mb-3">
+                <div className="flex items-center justify-start gap-3 mb-3">
+                  {profile?.show_account_balances ? (
                     <button
                       type="button"
                       className="icon-button p-2 rounded-md border border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-50 disabled:pointer-events-none"
                       onClick={() => refreshBalances()}
-                      disabled={balancesRefreshing}
+                      disabled={balancesRefreshing || transactionsRefreshing}
                       title={balancesRefreshing ? t.refreshingBalances : t.refreshBalances}
                       aria-label={balancesRefreshing ? t.refreshingBalances : t.refreshBalances}
                     >
-                      <i className={`fa-solid fa-rotate ${balancesRefreshing ? "fa-spin" : ""}`}></i>
+                      <i className={`fa-solid fa-scale-balanced ${balancesRefreshing ? "fa-spin" : ""}`} aria-hidden />
                     </button>
-                  </div>
-                ) : null}
+                  ) : null}
+                  <button
+                    type="button"
+                    className="icon-button p-2 rounded-md border border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-50 disabled:pointer-events-none"
+                    onClick={() => refreshAllTransactions()}
+                    disabled={balancesRefreshing || transactionsRefreshing}
+                    title={transactionsRefreshing ? t.refreshingTransactions : t.refreshTransactions}
+                    aria-label={transactionsRefreshing ? t.refreshingTransactions : t.refreshTransactions}
+                  >
+                    <i className={`fa-solid fa-arrows-rotate ${transactionsRefreshing ? "fa-spin" : ""}`} aria-hidden />
+                  </button>
+                </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {bankAccounts.map((account) => (
                     <div
@@ -6910,9 +8409,15 @@ function App() {
               </div>
               <div className="mt-4 grid gap-3">
                 {transactionsAll.length === 0 ? (
-                  <div className="text-sm text-slate-500 dark:text-slate-300">
-                    {t.transactionsListEmpty}
-                  </div>
+                  profile?.storage_mode === "local" && localEncryptionStatus?.encrypted && !localEncryptionStatus?.unlocked ? (
+                    <div className="text-sm font-semibold py-3 px-4 rounded-lg" style={{ color: "var(--text)", background: "var(--surface-hover)", borderLeft: "4px solid var(--primary)" }}>
+                      {t.transactionsLocalLocked}
+                    </div>
+                  ) : (
+                    <div className="text-sm text-slate-500 dark:text-slate-300">
+                      {t.transactionsListEmpty}
+                    </div>
+                  )
                 ) : (
                   transactionsAll.map((tx) => (
                     <div
@@ -7167,7 +8672,21 @@ function App() {
           <section className="mx-auto max-w-3xl px-6 py-16">
             <div className="card">
               <div className="flex items-center justify-between gap-2">
-                <h2 className="card-title">{t.profileTitle}</h2>
+                <div className="flex items-center gap-2 min-w-0">
+                  <h2 className="card-title m-0">{t.profileTitle}</h2>
+                  {profile.needs_onboarding && wizardDismissed && (
+                    <button
+                      type="button"
+                      className="bordered-icon-btn shrink-0 inline-flex items-center justify-center border rounded-full w-7 h-7"
+                      style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--primary)" }}
+                      title={t.wizardShowAgain}
+                      aria-label={t.wizardShowAgain}
+                      onClick={() => setWizardDismissed(false)}
+                    >
+                      <i className="fa-solid fa-list-check text-xs" aria-hidden />
+                    </button>
+                  )}
+                </div>
                 <button
                   type="button"
                   className="bordered-icon-btn shrink-0 inline-flex items-center justify-center border rounded-full w-8 h-8"
@@ -7185,7 +8704,7 @@ function App() {
                   style={{ borderColor: "var(--border)" }}
                   aria-label={t.profileTitle}
                 >
-                  {(["user", "channels", "alerts", "storage", "tokens"] as const).map((tabId) => (
+                  {(["user", "channels", "alerts", "storage", "tokens", "subscription"] as const).map((tabId) => (
                     <button
                       key={tabId}
                       type="button"
@@ -7202,6 +8721,7 @@ function App() {
                       {tabId === "alerts" && t.profileTabAlerts}
                       {tabId === "storage" && t.profileTabStorage}
                       {tabId === "tokens" && t.profileTabApiTokens}
+                      {tabId === "subscription" && t.profileTabSubscription}
                     </button>
                   ))}
                 </nav>
@@ -7243,7 +8763,7 @@ function App() {
                           <option value="" disabled>{t.profileCountryPlaceholder}</option>
                           {countryOptions.map((item) => (
                             <option key={item.code} value={item.code}>
-                              {item.names[language.code as "en" | "pt" | "es" | "fr"] ??
+                              {item.names[language.code as "en" | "pt" | "es" | "fr" | "de" | "it" | "nl" | "pl"] ??
                                 item.names.en}
                             </option>
                           ))}
@@ -7295,6 +8815,140 @@ function App() {
                         <span className="font-medium">{t.profileAdmin}:</span>{" "}
                         {profile.is_admin ? "✓" : "—"}
                       </div>
+                      {profile.is_authorized_user ? (
+                        <p className="text-sm mt-2" style={{ color: "var(--text-secondary)" }}>
+                          {t.authorizedUserAsAuthorizedMessage}
+                        </p>
+                      ) : (
+                        <>
+                          <hr style={{ borderColor: "var(--border)", margin: "1rem 0" }} />
+                          <h3 className="font-medium mt-2" style={{ color: "var(--text)" }}>{t.authorizedUsersTitle}</h3>
+                          <p className="text-sm" style={{ color: "var(--text-secondary)" }}>{t.authorizedUsersRequestLabel}</p>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <input
+                              type="email"
+                              className="input flex-1 min-w-[12rem]"
+                              value={authorizedUserRequestEmail}
+                              onChange={(e) => setAuthorizedUserRequestEmail(e.target.value)}
+                              placeholder={t.profileEmail}
+                            />
+                            <button
+                              type="button"
+                              className="inline-flex items-center justify-center p-2 rounded border transition-colors min-w-[2.25rem] disabled:opacity-50 disabled:pointer-events-none"
+                              style={{
+                                background: "var(--surface-hover)",
+                                borderColor: "var(--border)",
+                                color: "var(--text)",
+                              }}
+                              disabled={!authorizedUserRequestEmail.trim() || authorizedUserRequestSubmitting}
+                              title={authorizedUserRequestSubmitting ? "…" : t.authorizedUsersRequestButton}
+                              aria-label={authorizedUserRequestSubmitting ? "…" : t.authorizedUsersRequestButton}
+                              onClick={async () => {
+                                if (!apiToken || !authorizedUserRequestEmail.trim()) return;
+                                setAuthorizedUserRequestSubmitting(true);
+                                try {
+                                  const res = await fetch(`${apiBase}/api/me/authorized-users/request`, {
+                                    method: "POST",
+                                    headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+                                    body: JSON.stringify({ email: authorizedUserRequestEmail.trim() }),
+                                  });
+                                  const data = await res.json().catch(() => ({}));
+                                  if (res.ok && data) {
+                                    setAuthorizedUserRequestEmail("");
+                                    loadAuthorizedUsers();
+                                    const msg = (typeof data.message === "string" && data.message.toLowerCase().includes("already exists"))
+                                      ? t.authorizedUserRequestAlreadyExists
+                                      : t.authorizedUserRequestSent;
+                                    showToast(msg, "success");
+                                  } else if (res.status === 400 && data?.detail === "existing_user") {
+                                    showToast(t.authorizedUserCannotAuthorizeExistingUser, "error");
+                                  } else {
+                                    const err = typeof data?.detail === "string" ? data.detail : t.authorizedUserRevokeFailed;
+                                    showToast(err, "error");
+                                  }
+                                } finally {
+                                  setAuthorizedUserRequestSubmitting(false);
+                                }
+                              }}
+                            >
+                              <i className={`fa-solid fa-user-plus text-sm ${authorizedUserRequestSubmitting ? "fa-spin" : ""}`} aria-hidden />
+                            </button>
+                          </div>
+                          {authorizedUsersLoading ? (
+                            <p className="text-sm" style={{ color: "var(--text-secondary)" }}>…</p>
+                          ) : authorizedUsers && (authorizedUsers.pending.length > 0 || authorizedUsers.authorized.length > 0) ? (
+                            <div className="grid gap-3 mt-3">
+                              {authorizedUsers.pending.length > 0 && (
+                                <div>
+                                  <span className="font-medium text-sm" style={{ color: "var(--text)" }}>{t.authorizedUsersPendingTitle}</span>
+                                  <p className="text-xs mb-1" style={{ color: "var(--text-secondary)" }}>{t.authorizedUsersPendingHint}</p>
+                                  <ul className="mt-1 space-y-2">
+                                    {authorizedUsers.pending.map((r, i) => (
+                                      <li key={i} className="flex flex-wrap items-center gap-2 text-sm">
+                                        <span style={{ color: "var(--text)" }}>{r.email}</span>
+                                        <button
+                                          type="button"
+                                          className="inline-flex items-center justify-center p-2 rounded border transition-colors min-w-[2.25rem]"
+                                          style={{ borderColor: "var(--border)", background: "var(--surface-hover)", color: "var(--text)" }}
+                                          title={t.authorizedUsersRevoke}
+                                          aria-label={t.authorizedUsersRevoke}
+                                          onClick={async () => {
+                                            if (!apiToken) return;
+                                            const res = await fetch(
+                                              `${apiBase}/api/me/authorized-users/pending?email=${encodeURIComponent(r.email)}`,
+                                              { method: "DELETE", headers: { Authorization: `Bearer ${apiToken}` } }
+                                            );
+                                            if (res.ok) loadAuthorizedUsers();
+                                            else showToast(t.authorizedUserRevokeFailed, "error");
+                                          }}
+                                        >
+                                          <i className="fa-solid fa-xmark text-sm" aria-hidden />
+                                        </button>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                              {authorizedUsers.authorized.length > 0 && (
+                                <div>
+                                  <span className="font-medium text-sm" style={{ color: "var(--text)" }}>{t.authorizedUsersAuthorizedTitle}</span>
+                                  <ul className="mt-1 space-y-2">
+                                    {authorizedUsers.authorized.map((u) => (
+                                      <li key={u.user_id} className="flex flex-wrap items-center gap-2 text-sm">
+                                        <span style={{ color: "var(--text)" }}>{u.display_name || u.email}</span>
+                                        <span style={{ color: "var(--text-secondary)" }}>({u.email})</span>
+                                        <span style={{ color: "var(--text-secondary)" }}>
+                                          {t.authorizedUsersLastLogin}: {u.last_login_at
+                                            ? new Date(u.last_login_at).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })
+                                            : "—"}
+                                        </span>
+                                        <button
+                                          type="button"
+                                          className="inline-flex items-center justify-center p-2 rounded border transition-colors min-w-[2.25rem]"
+                                          style={{ borderColor: "var(--border)", background: "var(--surface-hover)", color: "var(--text)" }}
+                                          title={t.authorizedUsersRevoke}
+                                          aria-label={t.authorizedUsersRevoke}
+                                          onClick={async () => {
+                                            if (!apiToken) return;
+                                            const res = await fetch(`${apiBase}/api/me/authorized-users/${u.user_id}`, {
+                                              method: "DELETE",
+                                              headers: { Authorization: `Bearer ${apiToken}` },
+                                            });
+                                            if (res.ok) loadAuthorizedUsers();
+                                            else showToast(t.authorizedUserRevokeFailed, "error");
+                                          }}
+                                        >
+                                          <i className="fa-solid fa-user-minus text-sm" aria-hidden />
+                                        </button>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                              )}
+                            </div>
+                          ) : null}
+                        </>
+                      )}
                     </>
                   )}
                   {profileTab === "channels" && (
@@ -7304,6 +8958,16 @@ function App() {
                     <span className="font-medium inline-flex items-center gap-2" style={{ color: "var(--text)" }}>
                       <i className="fa-brands fa-telegram" aria-hidden style={{ color: "#0088cc" }} />
                       {t.profileTelegramId}
+                      <button
+                        type="button"
+                        className="bordered-icon-btn shrink-0 inline-flex items-center justify-center border rounded-full w-7 h-7"
+                        style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-secondary)" }}
+                        title={t.helpTelegramCommandsTitle}
+                        aria-label={t.helpTelegramCommandsTitle}
+                        onClick={() => setHelpModalContext("profileTelegramCommands")}
+                      >
+                        <i className="fa-regular fa-circle-question text-sm" aria-hidden />
+                      </button>
                     </span>
                     {profile?.telegram_chat_id ? (
                       <div className="flex flex-wrap items-center gap-2">
@@ -7562,15 +9226,18 @@ function App() {
                   )}
                   {profileTab === "storage" && (
                     <>
+                {profile?.storage_locked_for_shared_account && (
+                  <p className="text-sm mb-3" style={{ color: "var(--text-secondary)" }}>{t.storageLockedSharedAccount}</p>
+                )}
                 <div className="grid gap-2">
                   <span className="font-medium" style={{ color: "var(--text)" }}>{t.profileStorageMode}</span>
                   <div className="grid gap-3 sm:grid-cols-2">
                     <label
-                      className={`flex cursor-pointer flex-col gap-2 rounded-lg border p-4 transition-colors ${
+                      className={`flex flex-col gap-2 rounded-lg border p-4 transition-colors ${
                         profileForm.storage_mode === "cloud"
                           ? "border-blue-500 dark:border-blue-400"
                           : "border-slate-200 dark:border-slate-700"
-                      }`}
+                      } ${profile?.storage_locked_for_shared_account ? "cursor-default opacity-90" : "cursor-pointer"}`}
                       style={{
                         background: profileForm.storage_mode === "cloud" ? "var(--primary-50)" : "var(--surface)",
                       }}
@@ -7580,7 +9247,8 @@ function App() {
                           type="radio"
                           name="storage_mode"
                           checked={profileForm.storage_mode === "cloud"}
-                          onChange={() => setProfileForm((prev) => ({ ...prev, storage_mode: "cloud" }))}
+                          onChange={() => !profile?.storage_locked_for_shared_account && setProfileForm((prev) => ({ ...prev, storage_mode: "cloud" }))}
+                          disabled={!!profile?.storage_locked_for_shared_account}
                           className="h-4 w-4"
                         />
                         <span className="font-medium" style={{ color: "var(--text)" }}>{t.profileStorageModeCloud}</span>
@@ -7588,11 +9256,11 @@ function App() {
                       <p className="text-xs" style={{ color: "var(--text-secondary)" }}>{t.profileStorageModeCloudHelp}</p>
                     </label>
                     <label
-                      className={`flex cursor-pointer flex-col gap-2 rounded-lg border p-4 transition-colors ${
+                      className={`flex flex-col gap-2 rounded-lg border p-4 transition-colors ${
                         profileForm.storage_mode === "local"
                           ? "border-blue-500 dark:border-blue-400"
                           : "border-slate-200 dark:border-slate-700"
-                      }`}
+                      } ${profile?.storage_locked_for_shared_account ? "cursor-not-allowed opacity-60" : "cursor-pointer"}`}
                       style={{
                         background: profileForm.storage_mode === "local" ? "var(--primary-50)" : "var(--surface)",
                       }}
@@ -7602,7 +9270,8 @@ function App() {
                           type="radio"
                           name="storage_mode"
                           checked={profileForm.storage_mode === "local"}
-                          onChange={() => setProfileForm((prev) => ({ ...prev, storage_mode: "local" }))}
+                          onChange={() => !profile?.storage_locked_for_shared_account && setProfileForm((prev) => ({ ...prev, storage_mode: "local" }))}
+                          disabled={!!profile?.storage_locked_for_shared_account}
                           className="h-4 w-4"
                         />
                         <span className="font-medium" style={{ color: "var(--text)" }}>{t.profileStorageModeLocal}</span>
@@ -7610,6 +9279,602 @@ function App() {
                       <p className="text-xs" style={{ color: "var(--text-secondary)" }}>{t.profileStorageModeLocalHelp}</p>
                     </label>
                   </div>
+                </div>
+                <div className="mt-6 grid gap-6">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <span className="font-medium" style={{ color: "var(--text)" }}>{t.profileDownloadMyData}</span>
+                      <p className="text-xs mt-1" style={{ color: "var(--text-secondary)" }}>
+                        {t.profileExportHelp}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center p-2 rounded border transition-colors min-w-[2.25rem]"
+                        style={{
+                          background: "var(--surface-hover)",
+                          borderColor: "var(--border)",
+                          color: "var(--text)",
+                        }}
+                        title={t.profileDownloadJson}
+                        aria-label={t.profileDownloadJson}
+                        onClick={async () => {
+                          const isLocal = profile?.storage_mode === "local";
+                          if (isLocal && localEncryptionStatus?.encrypted && !localEncryptionStatus?.unlocked) {
+                            setPendingAfterUnlock({ type: "export", format: "json" });
+                            setLocalEncryptModal("unlock");
+                            return;
+                          }
+                          try {
+                            if (isLocal) {
+                              const json = await localTransactionsExportJSON();
+                              const blob = new Blob([json], { type: "application/json" });
+                              downloadBlob(blob, `eurodata-transactions-${new Date().toISOString().slice(0, 10)}.json`);
+                            } else {
+                              const all = await fetchAllCloudTransactions();
+                              const json = JSON.stringify(all, null, 2);
+                              const blob = new Blob([json], { type: "application/json" });
+                              downloadBlob(blob, `eurodata-transactions-${new Date().toISOString().slice(0, 10)}.json`);
+                            }
+                            showToast(t.profileDownloadJson, "success");
+                          } catch (e) {
+                            showToast("Export failed", "error");
+                          }
+                        }}
+                      >
+                        <i className="fa-solid fa-file-code" aria-hidden />
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center p-2 rounded border transition-colors min-w-[2.25rem]"
+                        style={{
+                          background: "var(--surface-hover)",
+                          borderColor: "var(--border)",
+                          color: "var(--text)",
+                        }}
+                        title={t.profileDownloadCsv}
+                        aria-label={t.profileDownloadCsv}
+                        onClick={async () => {
+                          const isLocal = profile?.storage_mode === "local";
+                          if (isLocal && localEncryptionStatus?.encrypted && !localEncryptionStatus?.unlocked) {
+                            setPendingAfterUnlock({ type: "export", format: "csv" });
+                            setLocalEncryptModal("unlock");
+                            return;
+                          }
+                          try {
+                            if (isLocal) {
+                              const csv = await localTransactionsExportCSV();
+                              const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+                              downloadBlob(blob, `eurodata-transactions-${new Date().toISOString().slice(0, 10)}.csv`);
+                            } else {
+                              if (!apiToken) {
+                                showToast("Export failed", "error");
+                                return;
+                              }
+                              const response = await fetch(`${apiBase}/api/transactions/export`, {
+                                method: "GET",
+                                headers: { Authorization: `Bearer ${apiToken}` },
+                              });
+                              if (!response.ok) {
+                                showToast("Export failed", "error");
+                                return;
+                              }
+                              const blob = await response.blob();
+                              downloadBlob(blob, `eurodata-transactions-${new Date().toISOString().slice(0, 10)}.csv`);
+                            }
+                            showToast(t.profileDownloadCsv, "success");
+                          } catch (e) {
+                            showToast("Export failed", "error");
+                          }
+                        }}
+                      >
+                        <i className="fa-solid fa-file-csv" aria-hidden />
+                      </button>
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center p-2 rounded border transition-colors min-w-[2.25rem]"
+                        style={{
+                          background: "var(--surface-hover)",
+                          borderColor: "var(--border)",
+                          color: "var(--text)",
+                        }}
+                        title={t.profileDownloadOfx}
+                        aria-label={t.profileDownloadOfx}
+                        onClick={async () => {
+                          const isLocal = profile?.storage_mode === "local";
+                          if (isLocal && localEncryptionStatus?.encrypted && !localEncryptionStatus?.unlocked) {
+                            setPendingAfterUnlock({ type: "export", format: "ofx" });
+                            setLocalEncryptModal("unlock");
+                            return;
+                          }
+                          try {
+                            if (isLocal) {
+                              const ofx = await localTransactionsExportOFX();
+                              const blob = new Blob([ofx], { type: "application/x-ofx" });
+                              downloadBlob(blob, `eurodata-transactions-${new Date().toISOString().slice(0, 10)}.ofx`);
+                            } else {
+                              if (!apiToken) {
+                                showToast("Export failed", "error");
+                                return;
+                              }
+                              const all = await fetchAllCloudTransactions();
+                              const ofx = buildOFXFromTransactions(all);
+                              const blob = new Blob([ofx], { type: "application/x-ofx" });
+                              downloadBlob(blob, `eurodata-transactions-${new Date().toISOString().slice(0, 10)}.ofx`);
+                            }
+                            showToast(t.profileDownloadOfx, "success");
+                          } catch (e) {
+                            showToast("Export failed", "error");
+                          }
+                        }}
+                      >
+                        <i className="fa-solid fa-file-invoice" aria-hidden />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <span className="font-medium" style={{ color: "var(--text)" }}>{t.profileImportData}</span>
+                      <p className="text-xs mt-1" style={{ color: "var(--text-secondary)" }}>
+                        {t.profileImportHelpShort}
+                      </p>
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center p-2 rounded border transition-colors min-w-[2.25rem]"
+                        style={{
+                          background: "var(--surface-hover)",
+                          borderColor: "var(--border)",
+                          color: "var(--text)",
+                        }}
+                        title={t.profileImportData}
+                        aria-label={t.profileImportData}
+                        onClick={() => {
+                          if (profile?.storage_mode === "local" && localEncryptionStatus?.encrypted && !localEncryptionStatus?.unlocked) {
+                            showToast("Unlock data in Profile to import.", "warning");
+                            return;
+                          }
+                          backupImportInputRef.current?.click();
+                        }}
+                      >
+                        <i className="fa-solid fa-file-import" aria-hidden />
+                      </button>
+                    </div>
+                  </div>
+                  <input
+                      ref={backupImportInputRef}
+                      type="file"
+                      accept=".json,.csv,.ofx,application/json,text/csv,application/x-ofx"
+                      className="sr-only"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        const isLocal = profile?.storage_mode === "local";
+                        const name = (file.name || "").toLowerCase();
+                        const isCsv = name.endsWith(".csv");
+                        const isOfx = name.endsWith(".ofx");
+                        try {
+                          const text = await file.text();
+                          if (isOfx) {
+                            if (isLocal) {
+                              const { imported, errors } = await localTransactionsImportFromOFX(text);
+                              if (errors.length > 0) {
+                                showToast(`${imported} imported; ${errors.length} errors`, "warning");
+                              } else {
+                                showToast(`${imported} transactions imported`, "success");
+                              }
+                            } else {
+                              const { transactions, errors } = parseOFXToImportPayload(text);
+                              if (transactions.length === 0 && errors.length > 0) {
+                                showToast(errors[0] || "Import failed", "error");
+                                e.target.value = "";
+                                return;
+                              }
+                              const res = await fetch(`${apiBase}/api/transactions/import`, {
+                                method: "POST",
+                                headers: {
+                                  Authorization: `Bearer ${apiToken}`,
+                                  "Content-Type": "application/json",
+                                },
+                                body: JSON.stringify({ transactions }),
+                              });
+                              if (!res.ok) {
+                                if (res.status === 403) {
+                                  setActiveSection("profile");
+                                  setProfileTab("subscription");
+                                  showToast(t.subscriptionNoAccess, "error");
+                                } else {
+                                  showToast("Import failed", "error");
+                                }
+                                e.target.value = "";
+                                return;
+                              }
+                              const data = await res.json().catch(() => ({}));
+                              const imported = data.imported ?? transactions.length;
+                              showToast(errors.length > 0 ? `${imported} imported; ${errors.length} parse errors` : `${imported} transactions imported`, errors.length ? "warning" : "success");
+                            }
+                          } else if (isCsv) {
+                            if (isLocal) {
+                              const { imported, errors } = await localTransactionsImportFromCSV(text);
+                              if (errors.length > 0) {
+                                showToast(`${imported} imported; ${errors.length} errors`, "warning");
+                              } else {
+                                showToast(`${imported} transactions imported`, "success");
+                              }
+                            } else {
+                              const { transactions, errors } = parseCSVToImportPayload(text);
+                              if (transactions.length === 0 && errors.length > 0) {
+                                showToast(errors[0] || "Import failed", "error");
+                                e.target.value = "";
+                                return;
+                              }
+                              const res = await fetch(`${apiBase}/api/transactions/import`, {
+                                method: "POST",
+                                headers: {
+                                  Authorization: `Bearer ${apiToken}`,
+                                  "Content-Type": "application/json",
+                                },
+                                body: JSON.stringify({ transactions }),
+                              });
+                              if (!res.ok) {
+                                if (res.status === 403) {
+                                  setActiveSection("profile");
+                                  setProfileTab("subscription");
+                                  showToast(t.subscriptionNoAccess, "error");
+                                } else {
+                                  showToast("Import failed", "error");
+                                }
+                                e.target.value = "";
+                                return;
+                              }
+                              const data = await res.json().catch(() => ({}));
+                              const imported = data.imported ?? transactions.length;
+                              showToast(errors.length > 0 ? `${imported} imported; ${errors.length} parse errors` : `${imported} transactions imported`, errors.length ? "warning" : "success");
+                            }
+                          } else {
+                            if (isLocal) {
+                              const { imported, errors } = await localTransactionsImportFromJSON(text);
+                              if (errors.length > 0) {
+                                showToast(`${imported} imported; ${errors.length} errors`, "warning");
+                              } else {
+                                showToast(`${imported} transactions imported`, "success");
+                              }
+                            } else {
+                              let arr: unknown[];
+                              try {
+                                arr = JSON.parse(text);
+                              } catch {
+                                showToast("Invalid JSON", "error");
+                                e.target.value = "";
+                                return;
+                              }
+                              if (!Array.isArray(arr)) {
+                                showToast("Expected a JSON array", "error");
+                                e.target.value = "";
+                                return;
+                              }
+                              const transactions = arr.map((o: Record<string, unknown>) => ({
+                                bank_account_id: Number(o.bank_account_id),
+                                transaction_id: String(o.transaction_id ?? ""),
+                                amount: String(o.amount ?? "0"),
+                                currency: String(o.currency ?? ""),
+                                booking_date: (o.booking_date as string) || null,
+                                value_date: (o.value_date as string) || null,
+                                posting_date: (o.posting_date as string) || null,
+                                description: (o.description as string) || null,
+                                status: (o.status as string) || "booked",
+                                include_in_totals: o.include_in_totals !== false,
+                                category_id: (o.category_id as number) ?? null,
+                                tag_ids: Array.isArray(o.tags) ? (o.tags as { id: number }[]).map((x) => x.id) : [],
+                                is_new: o.is_new !== false,
+                                comment: (o.comment as string) || null,
+                              }));
+                              const res = await fetch(`${apiBase}/api/transactions/import`, {
+                                method: "POST",
+                                headers: {
+                                  Authorization: `Bearer ${apiToken}`,
+                                  "Content-Type": "application/json",
+                                },
+                                body: JSON.stringify({ transactions }),
+                              });
+                              if (!res.ok) {
+                                if (res.status === 403) {
+                                  setActiveSection("profile");
+                                  setProfileTab("subscription");
+                                  showToast(t.subscriptionNoAccess, "error");
+                                } else {
+                                  showToast("Import failed", "error");
+                                }
+                                e.target.value = "";
+                                return;
+                              }
+                              const data = await res.json().catch(() => ({}));
+                              const imported = data.imported ?? transactions.length;
+                              showToast(`${imported} transactions imported`, "success");
+                            }
+                          }
+                          loadRecentTransactions();
+                          if (activeSection === "transactions") loadAllTransactions();
+                        } catch (err) {
+                          showToast("Import failed", "error");
+                        }
+                        e.target.value = "";
+                      }}
+                    />
+                  {profileForm.storage_mode === "local" && (
+                    <div className="flex flex-wrap items-center justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <span className="font-medium" style={{ color: "var(--text)" }}>
+                          {localEncryptionStatus?.encrypted
+                            ? (localEncryptionStatus.unlocked ? t.profileLocalLock : t.profileLocalUnlock)
+                            : t.profileLocalEncrypt}
+                        </span>
+                        <p className="text-xs mt-1" style={{ color: "var(--text-secondary)" }}>
+                          {localEncryptionStatus?.encrypted && !localEncryptionStatus?.unlocked
+                            ? t.profileLocalUnlockHelp
+                            : t.profileLocalEncryptHelp}
+                        </p>
+                      </div>
+                      <div className="flex shrink-0 gap-2">
+                        {!localEncryptionStatus?.encrypted && (
+                          <button
+                            type="button"
+                            className="inline-flex items-center justify-center p-2 rounded border transition-colors min-w-[2.25rem]"
+                            style={{ borderColor: "var(--border)", background: "var(--surface-hover)", color: "var(--text)" }}
+                            title={t.profileLocalEncrypt}
+                            aria-label={t.profileLocalEncrypt}
+                            onClick={() => setLocalEncryptModal("encrypt")}
+                          >
+                            <i className="fa-solid fa-lock" aria-hidden />
+                          </button>
+                        )}
+                        {localEncryptionStatus?.encrypted && localEncryptionStatus?.unlocked && (
+                          <button
+                            type="button"
+                            className="inline-flex items-center justify-center p-2 rounded border transition-colors min-w-[2.25rem]"
+                            style={{ borderColor: "var(--border)", background: "var(--surface-hover)", color: "var(--text)" }}
+                            title={t.profileLocalLock}
+                            aria-label={t.profileLocalLock}
+                            onClick={() => setLocalEncryptModal("lock")}
+                          >
+                            <i className="fa-solid fa-lock-open" aria-hidden />
+                          </button>
+                        )}
+                        {localEncryptionStatus?.encrypted && !localEncryptionStatus?.unlocked && (
+                          <button
+                            type="button"
+                            className="inline-flex items-center justify-center p-2 rounded border transition-colors min-w-[2.25rem]"
+                            style={{ borderColor: "var(--primary)", background: "var(--primary)", color: "white" }}
+                            title={t.profileLocalUnlock}
+                            aria-label={t.profileLocalUnlock}
+                            onClick={() => setLocalEncryptModal("unlock")}
+                          >
+                            <i className="fa-solid fa-key" aria-hidden />
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+                    </>
+                  )}
+                  {profileTab === "subscription" && (
+                    <>
+                {profile?.is_authorized_user && (
+                  <p className="text-sm mb-3" style={{ color: "var(--text-secondary)" }}>{t.subscriptionOwnerOnly}</p>
+                )}
+                <div className="grid gap-4">
+                  {profile?.is_authorized_user ? (
+                    /* Authorized user: read-only status, no manage/subscribe/portal/checkout */
+                    <>
+                      {profile?.has_subscription_access ? (
+                        <>
+                          {profile.subscription_status === "active" && (
+                            <p className="text-sm m-0" style={{ color: "var(--text)" }}>
+                              {profile.subscription_cancel_at_period_end ? t.subscriptionStatusCanceled : t.subscriptionStatusActive}
+                              {profile.subscription_current_period_end && (() => {
+                                const d = new Date(profile.subscription_current_period_end);
+                                if (!Number.isNaN(d.getTime())) {
+                                  return <> — {t.subscriptionPeriodEndsOn} {d.toLocaleDateString(undefined, { dateStyle: "long" })}</>;
+                                }
+                                return null;
+                              })()}
+                            </p>
+                          )}
+                          {profile.subscription_status !== "active" && (
+                            <p className="text-sm m-0" style={{ color: "var(--text)" }}>
+                              {t.subscriptionStatusTrial}
+                              {profile.trial_ends_at && (
+                                <> {t.subscriptionTrialEndsOn} {new Date(profile.trial_ends_at).toLocaleDateString(undefined, { dateStyle: "long" })}</>
+                              )}
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="text-sm m-0" style={{ color: "var(--text)" }}>
+                          {t.subscriptionTrialEnded}
+                          {profile?.trial_ends_at && (
+                            <> {t.subscriptionTrialEndsOn} {new Date(profile.trial_ends_at).toLocaleDateString(undefined, { dateStyle: "long" })}</>
+                          )}
+                        </p>
+                      )}
+                    </>
+                  ) : profile?.has_subscription_access ? (
+                    <>
+                      {/* Active subscription: one row — status + date left, manage (icon) right */}
+                      {profile.subscription_status === "active" && (
+                        <div className="flex items-center justify-between gap-3 flex-wrap">
+                          <p className="text-sm m-0" style={{ color: "var(--text)" }}>
+                            {profile.subscription_cancel_at_period_end ? t.subscriptionStatusCanceled : t.subscriptionStatusActive}
+                            {profile.subscription_current_period_end && (() => {
+                              const d = new Date(profile.subscription_current_period_end);
+                              if (!Number.isNaN(d.getTime())) {
+                                return <> — {t.subscriptionPeriodEndsOn} {d.toLocaleDateString(undefined, { dateStyle: "long" })}</>;
+                              }
+                              return null;
+                            })()}
+                          </p>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button
+                              type="button"
+                              className="inline-flex items-center justify-center w-9 h-9 rounded-lg border font-medium transition-colors disabled:opacity-60"
+                              style={{
+                                borderColor: "var(--border)",
+                                background: "var(--surface-hover)",
+                                color: "var(--text)",
+                              }}
+                              disabled={subscriptionRefreshLoading}
+                              title={t.subscriptionRefresh}
+                              aria-label={subscriptionRefreshLoading ? t.subscriptionRefreshing : t.subscriptionRefresh}
+                              onClick={async () => {
+                                if (!apiToken || !apiBase) return;
+                                setSubscriptionRefreshLoading(true);
+                                try {
+                                  const res = await fetch(`${apiBase}/api/me`, {
+                                    headers: { Authorization: `Bearer ${apiToken}` },
+                                  });
+                                  if (res.ok) {
+                                    setProfile(await res.json());
+                                    showToast(t.subscriptionRefreshed, "success");
+                                  } else {
+                                    showToast("Failed to refresh", "error");
+                                  }
+                                } catch {
+                                  showToast("Failed to refresh", "error");
+                                } finally {
+                                  setSubscriptionRefreshLoading(false);
+                                }
+                              }}
+                            >
+                              <i className={`fa-solid fa-rotate ${subscriptionRefreshLoading ? "fa-spin" : ""}`} aria-hidden />
+                            </button>
+                            <button
+                              type="button"
+                              className="inline-flex items-center justify-center w-9 h-9 rounded-lg border font-medium transition-colors disabled:opacity-60"
+                              style={{
+                                borderColor: "var(--border)",
+                                background: "var(--surface-hover)",
+                                color: "var(--text)",
+                              }}
+                              disabled={subscriptionPortalLoading}
+                              title={t.subscriptionManage}
+                              aria-label={t.subscriptionManage}
+                              onClick={async () => {
+                                if (!apiToken || !apiBase) return;
+                                setSubscriptionPortalLoading(true);
+                                try {
+                                  const returnUrl = `${window.location.origin}${window.location.pathname}?open=profile&tab=subscription`;
+                                  const res = await fetch(`${apiBase}/api/me/subscription/portal`, {
+                                    method: "POST",
+                                    headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+                                    body: JSON.stringify({ return_url: returnUrl }),
+                                  });
+                                  const data = await res.json();
+                                  if (data?.url) window.location.href = data.url;
+                                  else if (!res.ok) {
+                                    const err = await res.json().catch(() => ({}));
+                                    showToast(err?.detail ?? "Portal unavailable", "error");
+                                  }
+                                } finally {
+                                  setSubscriptionPortalLoading(false);
+                                }
+                              }}
+                            >
+                              <i className="fa-solid fa-external-link-alt" aria-hidden />
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      {/* Trial: one row — status + date left, subscribe (icon) right */}
+                      {profile.subscription_status !== "active" && (
+                        <div className="flex items-center justify-between gap-3 flex-wrap">
+                          <p className="text-sm m-0" style={{ color: "var(--text)" }}>
+                            {t.subscriptionStatusTrial}
+                            {profile.trial_ends_at && (
+                              <> {t.subscriptionTrialEndsOn} {new Date(profile.trial_ends_at).toLocaleDateString(undefined, { dateStyle: "long" })}</>
+                            )}
+                          </p>
+                          <button
+                            type="button"
+                            className="inline-flex items-center justify-center w-9 h-9 rounded-lg border font-medium transition-colors disabled:opacity-60 shrink-0"
+                            style={{
+                              borderColor: "var(--border)",
+                              background: "var(--surface-hover)",
+                              color: "var(--text)",
+                            }}
+                            disabled={subscriptionCheckoutLoading}
+                            title={t.subscriptionSubscribe}
+                            aria-label={t.subscriptionSubscribe}
+                            onClick={async () => {
+                              if (!apiToken || !apiBase) return;
+                              setSubscriptionCheckoutLoading(true);
+                              try {
+                                const res = await fetch(`${apiBase}/api/me/subscription/checkout`, {
+                                  method: "POST",
+                                  headers: { Authorization: `Bearer ${apiToken}` },
+                                });
+                                const data = await res.json();
+                                if (data?.url) window.location.href = data.url;
+                                else if (!res.ok) {
+                                  const err = await res.json().catch(() => ({}));
+                                  showToast(err?.detail ?? "Checkout failed", "error");
+                                }
+                              } finally {
+                                setSubscriptionCheckoutLoading(false);
+                              }
+                            }}
+                          >
+                            <i className="fa-solid fa-credit-card" aria-hidden />
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div>
+                        <p className="text-sm m-0" style={{ color: "var(--text)" }}>{t.subscriptionTrialEnded}</p>
+                        {profile?.trial_ends_at && (
+                          <p className="text-xs m-0 mt-1" style={{ color: "var(--text-secondary)" }}>
+                            {t.subscriptionTrialEndsOn} {new Date(profile.trial_ends_at).toLocaleDateString(undefined, { dateStyle: "long" })}
+                          </p>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        className="inline-flex items-center justify-center w-9 h-9 rounded-lg border font-medium transition-colors disabled:opacity-60 shrink-0"
+                        style={{
+                          borderColor: "var(--border)",
+                          background: "var(--surface-hover)",
+                          color: "var(--text)",
+                        }}
+                        disabled={subscriptionCheckoutLoading}
+                        title={t.subscriptionSubscribe}
+                        aria-label={t.subscriptionSubscribe}
+                        onClick={async () => {
+                          if (!apiToken || !apiBase) return;
+                          setSubscriptionCheckoutLoading(true);
+                          try {
+                            const res = await fetch(`${apiBase}/api/me/subscription/checkout`, {
+                              method: "POST",
+                              headers: { Authorization: `Bearer ${apiToken}` },
+                            });
+                            const data = await res.json();
+                            if (data?.url) window.location.href = data.url;
+                            else if (!res.ok) {
+                              const err = await res.json().catch(() => ({}));
+                              showToast(err?.detail ?? "Checkout failed", "error");
+                            }
+                          } finally {
+                            setSubscriptionCheckoutLoading(false);
+                          }
+                        }}
+                      >
+                        <i className="fa-solid fa-credit-card" aria-hidden />
+                      </button>
+                    </div>
+                  )}
                 </div>
                     </>
                   )}
@@ -7941,7 +10206,8 @@ function App() {
         ) : null}
 
         {isAuthenticated && profile?.is_admin && apiToken && activeSection === "adminDashboard" ? (
-          <AdminDashboard
+          <Suspense fallback={<SectionFallback />}>
+          <LazyAdminDashboard
             token={apiToken}
             apiBase={apiBase}
             t={{
@@ -7955,6 +10221,7 @@ function App() {
               metricsActiveUsers30d: t.metricsActiveUsers30d,
               metricsOnboardingCompleted: t.metricsOnboardingCompleted,
               metricsUsersWithAccount: t.metricsUsersWithAccount,
+              metricsActiveSubscriptionUsers: t.metricsActiveSubscriptionUsers,
               metricsTotalAccounts: t.metricsTotalAccounts,
               metricsTotalConnections: t.metricsTotalConnections,
               metricsTotalTransactions: t.metricsTotalTransactions,
@@ -7976,10 +10243,12 @@ function App() {
               metricsError: t.metricsError,
             }}
           />
+          </Suspense>
         ) : null}
 
         {isAuthenticated && profile?.is_admin && apiToken && activeSection === "audit" ? (
-          <Audit
+          <Suspense fallback={<SectionFallback />}>
+          <LazyAudit
             token={apiToken}
             apiBase={apiBase}
             t={{
@@ -8025,12 +10294,16 @@ function App() {
               return Object.fromEntries(keys.map((k) => [k, tAny[`audit_action_${k}`] ?? k]));
             })()}
           />
+          </Suspense>
         ) : null}
 
         {isAuthenticated && apiToken && activeSection === "settings" ? (
-          <Settings
+          <Suspense fallback={<SectionFallback />}>
+          <LazySettings
             token={apiToken}
             apiBase={apiBase}
+            languageCode={language.code}
+            initialTab={settingsInitialTab ?? undefined}
             t={{
               settingsTitle: t.settingsTitle,
               settingsCategories: t.settingsCategories,
@@ -8041,6 +10314,7 @@ function App() {
               settingsTagName: t.settingsTagName,
               settingsExport: t.settingsExport,
               settingsImport: t.settingsImport,
+              settingsLoadSample: t.settingsLoadSample,
               settingsExportImport: t.settingsExportImport,
               settingsExportSuccess: t.settingsExportSuccess,
               settingsImportSuccess: t.settingsImportSuccess,
@@ -8054,12 +10328,15 @@ function App() {
               profileSaveError: t.profileSaveError,
             }}
           />
+          </Suspense>
         ) : null}
 
         {isAuthenticated && profile?.is_admin && apiToken && activeSection === "users" ? (
-          <AdminUsers
+          <Suspense fallback={<SectionFallback />}>
+          <LazyAdminUsers
             token={apiToken}
             apiBase={apiBase}
+            showToast={showToast}
             t={{
               adminTitle: t.adminTitle,
               adminCreate: t.adminCreate,
@@ -8098,12 +10375,13 @@ function App() {
               adminTelegramSave: t.adminTelegramSave,
             }}
           />
+          </Suspense>
         ) : null}
 
         {activeSection === "home" && !isAuthenticated ? (
-          <section className="mx-auto max-w-6xl px-6 pt-16 pb-4">
-          <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
-            <div>
+          <section className="mx-auto min-w-0 max-w-6xl px-6 pt-16 pb-4">
+          <div className="grid min-w-0 grid-cols-1 gap-10 lg:grid-cols-2 lg:items-center">
+            <div className="min-w-0">
               <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">
                 {t.heroEyebrow}
               </p>
@@ -8165,9 +10443,9 @@ function App() {
                 </a>
               </div>
             </div>
-            <div className="relative flex justify-center lg:justify-end">
+            <div className="relative min-w-0 flex justify-center lg:justify-end">
               <div
-                className="w-full max-w-xl overflow-hidden rounded-2xl border shadow-2xl transition-shadow duration-300 hover:shadow-xl"
+                className="w-full max-w-full overflow-hidden rounded-2xl border shadow-2xl transition-shadow duration-300 hover:shadow-xl sm:max-w-xl"
                 style={{
                   borderColor: "var(--border)",
                   boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px var(--border)",
@@ -8188,68 +10466,68 @@ function App() {
         ) : null}
 
         {activeSection === "home" && !isAuthenticated ? (
-          <section id="landing-carousel" className="border-t border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
-            <div className="w-full">
-              <div className="relative overflow-hidden border-t border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900" style={{ minHeight: "420px" }}>
+          <section id="landing-carousel" className="w-full min-w-0 max-w-full overflow-x-hidden border-t border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-950">
+            <div className="w-full min-w-0 max-w-full">
+              <div className="relative w-full min-w-0 overflow-hidden border-t border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-900" style={{ minHeight: "420px" }}>
                 {/* Carousel slides - order: 1 Privacidade, 2 Categories and Tags, 3 Analysis, 4 Os seus dados */}
                 <div
-                  className="flex transition-transform duration-300 ease-out"
+                  className="flex w-full transition-transform duration-300 ease-out"
                   style={{ transform: `translateX(-${landingCarouselIndex * 100}%)` }}
                 >
                   {/* Slide 1: Privacidade por design */}
-                  <div className="min-w-full shrink-0 px-6 py-8 md:px-10 md:py-10">
+                  <div className="min-w-full shrink-0 max-w-full px-6 py-8 md:px-10 md:py-10" style={{ width: "100%" }}>
                     <h2 className="text-center text-xl font-bold text-slate-900 dark:text-slate-100 md:text-2xl">
                       {t.privacyHighlightsTitle}
                     </h2>
-                    <div className="mx-auto mt-8 grid max-w-4xl gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                      <div className="flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                    <div className="mx-auto mt-8 grid min-w-0 max-w-4xl gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                      <div className="flex min-w-0 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
                           <i className="fa-solid fa-shield-halved text-sm"></i>
                         </span>
-                        <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight1}</p>
+                        <p className="min-w-0 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight1}</p>
                       </div>
-                      <div className="flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                      <div className="flex min-w-0 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
                           <i className="fa-solid fa-lock text-sm"></i>
                         </span>
-                        <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight2}</p>
+                        <p className="min-w-0 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight2}</p>
                       </div>
-                      <div className="flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                      <div className="flex min-w-0 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
                           <i className="fa-solid fa-certificate text-sm"></i>
                         </span>
-                        <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight3}</p>
+                        <p className="min-w-0 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight3}</p>
                       </div>
-                      <div className="flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                      <div className="flex min-w-0 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
                           <i className="fa-solid fa-key text-sm"></i>
                         </span>
-                        <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight4}</p>
+                        <p className="min-w-0 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight4}</p>
                       </div>
-                      <div className="flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                      <div className="flex min-w-0 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
                           <i className="fa-solid fa-server text-sm"></i>
                         </span>
-                        <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight5}</p>
+                        <p className="min-w-0 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight5}</p>
                       </div>
-                      <div className="flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                      <div className="flex min-w-0 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
                           <i className="fa-brands fa-github text-sm"></i>
                         </span>
-                        <p className="text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight6}</p>
+                        <p className="min-w-0 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.privacyHighlight6}</p>
                       </div>
                     </div>
                   </div>
 
-                  {/* Slide 2: Categories and Tags (2 cards) */}
-                  <div className="min-w-full shrink-0 px-6 py-8 md:px-10 md:py-10">
+                  {/* Slide 2: Funcionalidades (2 cards) */}
+                  <div className="min-w-full shrink-0 max-w-full px-6 py-8 md:px-10 md:py-10" style={{ width: "100%" }}>
                     <h2 className="text-center text-xl font-bold text-slate-900 dark:text-slate-100 md:text-2xl">
-                      {t.landingFeaturesCategoriesAndTagsTitle ?? "Categories and Tags"}
+                      {t.landingFeaturesSectionTitle}
                     </h2>
-                    <div className="mx-auto mt-8 grid max-w-3xl gap-4 sm:grid-cols-2">
-                      <div className="flex flex-col overflow-visible rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                    <div className="mx-auto mt-8 grid min-w-0 max-w-3xl gap-4 sm:grid-cols-2">
+                      <div className="flex min-w-0 flex-col overflow-visible rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
                         <div
-                          className="group relative h-44 w-full shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800"
+                          className="group relative h-44 w-full min-w-0 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800"
                           role="button"
                           tabIndex={0}
                           onClick={() => setFeaturePreviewSrc(isDark ? "/categories-dark.png" : "/categories.png")}
@@ -8277,11 +10555,11 @@ function App() {
                           <img src={isDark ? "/categories-dark.png" : "/categories.png"} alt="" className="h-full w-full object-cover object-top" width={320} height={180} />
                         </div>
                         <h3 className="mt-3 text-base font-semibold text-slate-900 dark:text-slate-100">{t.settingsCategories}</h3>
-                        <p className="mt-1 flex-1 whitespace-pre-line text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.featureCategoriesBody}</p>
+                        <p className="mt-1 min-w-0 flex-1 whitespace-pre-line text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.featureCategoriesBody}</p>
                       </div>
-                      <div className="flex flex-col overflow-visible rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                      <div className="flex min-w-0 flex-col overflow-visible rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
                         <div
-                          className="group relative h-44 w-full shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800"
+                          className="group relative h-44 w-full min-w-0 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800"
                           role="button"
                           tabIndex={0}
                           onClick={() => setFeaturePreviewSrc(isDark ? "/tags-dark.png" : "/tags.png")}
@@ -8309,20 +10587,20 @@ function App() {
                           <img src={isDark ? "/tags-dark.png" : "/tags.png"} alt="" className="h-full w-full object-cover object-top" width={320} height={180} />
                         </div>
                         <h3 className="mt-3 text-base font-semibold text-slate-900 dark:text-slate-100">{t.settingsTags}</h3>
-                        <p className="mt-1 flex-1 whitespace-pre-line text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.featureTagsBody ?? "Assign multiple tags per transaction."}</p>
+                        <p className="mt-1 min-w-0 flex-1 whitespace-pre-line text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.featureTagsBody ?? "Assign multiple tags per transaction."}</p>
                       </div>
                     </div>
                   </div>
 
                   {/* Slide 3: Analysis (3 cards: Bancos, Análises claras, Vista de calendário) */}
-                  <div className="min-w-full shrink-0 px-6 py-8 md:px-10 md:py-10">
+                  <div className="min-w-full shrink-0 max-w-full px-6 py-8 md:px-10 md:py-10" style={{ width: "100%" }}>
                     <h2 className="text-center text-xl font-bold text-slate-900 dark:text-slate-100 md:text-2xl">
                       {t.landingFeaturesAnalysisTitle ?? "Analysis"}
                     </h2>
-                    <div className="mx-auto mt-8 grid max-w-4xl gap-4 sm:grid-cols-3">
-                      <div className="flex flex-col overflow-visible rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                    <div className="mx-auto mt-8 grid min-w-0 max-w-4xl gap-4 sm:grid-cols-3">
+                      <div className="flex min-w-0 flex-col overflow-visible rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
                         <div
-                          className="group relative h-44 w-full shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800"
+                          className="group relative h-44 w-full min-w-0 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800"
                           role="button"
                           tabIndex={0}
                           onClick={() => setFeaturePreviewSrc(isDark ? "/banks-dark.png" : "/banks.png")}
@@ -8350,11 +10628,11 @@ function App() {
                           <img src={isDark ? "/banks-dark.png" : "/banks.png"} alt="" className="h-full w-full object-cover object-top" width={320} height={180} />
                         </div>
                         <h3 className="mt-3 text-base font-semibold text-slate-900 dark:text-slate-100">{t.featureBancosTitle ?? t.featureAccountsTitle}</h3>
-                        <p className="mt-1 flex-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.featureAccountsBody}</p>
+                        <p className="mt-1 min-w-0 flex-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.featureAccountsBody}</p>
                       </div>
-                      <div className="flex flex-col overflow-visible rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                      <div className="flex min-w-0 flex-col overflow-visible rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
                         <div
-                          className="group relative h-44 w-full shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800"
+                          className="group relative h-44 w-full min-w-0 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800"
                           role="button"
                           tabIndex={0}
                           onClick={() => setFeaturePreviewSrc(isDark ? "/insights-dark.jpeg" : "/insights.jpeg")}
@@ -8382,13 +10660,13 @@ function App() {
                           <img src={isDark ? "/insights-dark.jpeg" : "/insights.jpeg"} alt="" className="h-full w-full object-cover object-top" width={320} height={180} />
                         </div>
                         <h3 className="mt-3 text-base font-semibold text-slate-900 dark:text-slate-100">{t.featureInsightsTitle}</h3>
-                        <p className="mt-1 flex-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+                        <p className="mt-1 min-w-0 flex-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
                           {(t.featureInsightsBodyBullets ?? t.featureInsightsBody).split("\n").filter((line) => line.trim()).join(" ")}
                         </p>
                       </div>
-                      <div className="flex flex-col overflow-visible rounded-lg border border-slate-200 bg-slate-50 p-4 ring-2 ring-blue-500/50 dark:border-slate-700 dark:bg-slate-800/50 dark:ring-blue-400/50">
+                      <div className="flex min-w-0 flex-col overflow-visible rounded-lg border border-slate-200 bg-slate-50 p-4 ring-2 ring-blue-500/50 dark:border-slate-700 dark:bg-slate-800/50 dark:ring-blue-400/50">
                         <div
-                          className="group relative h-44 w-full shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800"
+                          className="group relative h-44 w-full min-w-0 shrink-0 cursor-zoom-in overflow-hidden rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800"
                           role="button"
                           tabIndex={0}
                           onClick={() => setFeaturePreviewSrc(isDark ? "/calendar-dark.jpeg" : "/calendar.jpeg")}
@@ -8423,36 +10701,54 @@ function App() {
                             </span>
                           </span>
                         </h3>
-                        <p className="mt-1 flex-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.featureCalendarBody}</p>
+                        <p className="mt-1 min-w-0 flex-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.featureCalendarBody}</p>
                       </div>
                     </div>
                   </div>
 
                   {/* Slide 4: Os seus dados, a sua escolha */}
-                  <div className="min-w-full shrink-0 px-6 py-8 md:px-10 md:py-10">
+                  <div className="min-w-full shrink-0 max-w-full px-6 py-8 md:px-10 md:py-10" style={{ width: "100%" }}>
                     <h2 className="text-center text-xl font-bold text-slate-900 dark:text-slate-100 md:text-2xl">
                       {t.landingStorageTitle}
                     </h2>
                     <p className="mx-auto mt-3 max-w-2xl text-center text-sm leading-relaxed text-slate-600 dark:text-slate-300">
                       {t.landingStorageSubtitle}
                     </p>
-                    <div className="mx-auto mt-8 grid max-w-3xl gap-4 sm:grid-cols-2">
-                      <div className="flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                    <div className="mx-auto mt-8 grid min-w-0 max-w-3xl gap-4 sm:grid-cols-2">
+                      <div className="flex min-w-0 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
                           <i className="fa-solid fa-cloud-arrow-up text-sm"></i>
                         </span>
-                        <div>
+                        <div className="min-w-0">
                           <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{t.landingStorageCloudTitle}</h3>
                           <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.landingStorageCloudBody}</p>
                         </div>
                       </div>
-                      <div className="flex gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                      <div className="flex min-w-0 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
                         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
                           <i className="fa-solid fa-laptop text-sm"></i>
                         </span>
-                        <div>
+                        <div className="min-w-0">
                           <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{t.landingStorageLocalTitle}</h3>
                           <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.landingStorageLocalBody}</p>
+                        </div>
+                      </div>
+                      <div className="flex min-w-0 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
+                          <i className="fa-solid fa-lock text-sm"></i>
+                        </span>
+                        <div className="min-w-0">
+                          <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{t.landingStorageEncryptionTitle}</h3>
+                          <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.landingStorageEncryptionBody}</p>
+                        </div>
+                      </div>
+                      <div className="flex min-w-0 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-800/50">
+                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400" aria-hidden>
+                          <i className="fa-solid fa-database text-sm"></i>
+                        </span>
+                        <div className="min-w-0">
+                          <h3 className="text-base font-semibold text-slate-900 dark:text-slate-100">{t.landingStorageDataTitle}</h3>
+                          <p className="mt-1 text-sm leading-relaxed text-slate-600 dark:text-slate-300">{t.landingStorageDataBody}</p>
                         </div>
                       </div>
                     </div>
@@ -8537,9 +10833,11 @@ function App() {
 
       </main>
 
-      <footer className="fixed bottom-0 w-full border-t border-slate-200 bg-slate-50 dark:border-slate-800 dark:bg-slate-900">
-        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-6 py-6 text-sm text-slate-500 dark:text-slate-400 md:flex-row">
-          <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+      <footer
+        className={`fixed bottom-0 left-0 right-0 w-full border-t border-slate-200 bg-slate-50 transition-transform duration-300 ease-out dark:border-slate-800 dark:bg-slate-900 ${bottomBarVisible ? "translate-y-0" : "translate-y-full"}`}
+      >
+        <div className="mx-auto flex min-w-0 max-w-6xl flex-col items-center justify-between gap-4 px-6 py-6 text-sm text-slate-500 dark:text-slate-400 md:flex-row">
+          <div className="flex min-w-0 flex-wrap items-center justify-center gap-x-4 gap-y-1">
             <span>{t.footerCopyright}</span>
             <a
               href="/privacy"
@@ -8566,6 +10864,33 @@ function App() {
           </div>
         </div>
       </footer>
+
+      {/* Onboarding wizard - floating lower left when user has needs_onboarding */}
+      {isAuthenticated && profile?.needs_onboarding && !wizardDismissed && (
+        <OnboardingWizard
+          steps={[
+            { id: "country", label: t.wizardStepCountry },
+            { id: "channels", label: t.wizardStepChannels },
+            { id: "alerts", label: t.wizardStepAlerts },
+            { id: "storage", label: t.wizardStepStorage },
+            { id: "categories", label: t.wizardStepCategories },
+            { id: "tags", label: t.wizardStepTags },
+            { id: "account", label: t.wizardStepAccount },
+          ]}
+          completedSteps={onboardingWizardCompletedSteps}
+          onStepNavigate={handleOnboardingWizardStepNavigate}
+          onStepToggle={handleOnboardingWizardStepToggle}
+          onDismiss={handleOnboardingWizardDismiss}
+          minimized={onboardingWizardMinimized}
+          onMinimizeChange={setOnboardingWizardMinimized}
+          t={{
+            wizardTitle: t.wizardTitle,
+            wizardClose: t.wizardClose,
+            wizardMinimize: t.wizardMinimize,
+            wizardExpand: t.wizardExpand,
+          }}
+        />
+      )}
 
       {/* Floating "To top" - all authenticated sections when scrolled */}
       {isAuthenticated && !profile?.needs_onboarding && showToTopButton && (

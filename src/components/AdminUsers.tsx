@@ -59,9 +59,10 @@ type Props = {
   token: string;
   apiBase: string;
   t: Translations;
+  showToast?: (message: string, type: "success" | "warning" | "error") => void;
 };
 
-export default function AdminUsers({ token, apiBase, t }: Props) {
+export default function AdminUsers({ token, apiBase, t, showToast }: Props) {
   const [users, setUsers] = useState<User[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
@@ -128,10 +129,16 @@ export default function AdminUsers({ token, apiBase, t }: Props) {
       setIsAdmin(false);
       setErrorMessage("");
       if (data.invite_sent) {
-        setInviteMessage(t.inviteEmailSent);
+        if (showToast) {
+          showToast(t.inviteEmailSent, "success");
+          setInviteMessage("");
+        } else setInviteMessage(t.inviteEmailSent);
         setInviteLink("");
       } else if (data.invite_detail) {
-        setInviteMessage(t.inviteEmailRetry);
+        if (showToast) {
+          showToast(t.inviteEmailRetry, "warning");
+          setInviteMessage("");
+        } else setInviteMessage(t.inviteEmailRetry);
       }
       await loadUsers();
       return;
@@ -212,7 +219,10 @@ export default function AdminUsers({ token, apiBase, t }: Props) {
     if (response.ok) {
       const data = await response.json();
       if (data.sent) {
-        setInviteMessage(t.inviteEmailSent);
+        if (showToast) {
+          showToast(t.inviteEmailSent, "success");
+          setInviteMessage("");
+        } else setInviteMessage(t.inviteEmailSent);
         setInviteLink("");
       } else if (data.ticket) {
         setInviteMessage(t.inviteEmailFallback);

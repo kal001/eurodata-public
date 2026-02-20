@@ -6,6 +6,7 @@ type MetricsUsers = {
   active_users_30d: number;
   users_with_onboarding_completed: number;
   users_with_at_least_one_account: number;
+  active_subscription_users: number;
 };
 
 type MetricsBanking = {
@@ -52,6 +53,7 @@ type Translations = {
   metricsActiveUsers30d: string;
   metricsOnboardingCompleted: string;
   metricsUsersWithAccount: string;
+  metricsActiveSubscriptionUsers: string;
   metricsTotalAccounts: string;
   metricsTotalConnections: string;
   metricsTotalTransactions: string;
@@ -162,12 +164,13 @@ export default function AdminDashboard({ token, apiBase, t }: Props) {
 
       <div className="mb-10">
         <h2 className="card-title mb-4">{t.metricsUsers}</h2>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
           <MetricCard label={t.metricsTotalUsers} value={users.total_users} />
           <MetricCard label={t.metricsActiveUsers7d} value={users.active_users_7d} />
           <MetricCard label={t.metricsActiveUsers30d} value={users.active_users_30d} />
           <MetricCard label={t.metricsOnboardingCompleted} value={users.users_with_onboarding_completed} />
           <MetricCard label={t.metricsUsersWithAccount} value={users.users_with_at_least_one_account} />
+          <MetricCard label={t.metricsActiveSubscriptionUsers} value={users.active_subscription_users} />
         </div>
       </div>
 

@@ -580,11 +580,7 @@ export default function RecurringTransactions({
           onClick={runSuggestions}
           disabled={runSuggestionsLoading || (selectedAccountId === "all" && accounts.length === 0)}
         >
-          {runSuggestionsLoading ? (
-            <i className="fa-solid fa-spinner fa-spin" aria-hidden />
-          ) : (
-            <i className="fa-solid fa-magnifying-glass-chart" aria-hidden />
-          )}
+          <i className={`fa-solid fa-magnifying-glass-chart ${runSuggestionsLoading ? "fa-spin" : ""}`} aria-hidden />
         </button>
       </div>
       <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">{t.recurringSubtitle}</p>

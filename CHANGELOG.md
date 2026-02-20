@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, and this project adheres to
 Semantic Versioning.
 
+## [2.2.0] - 2026-02-19
+
+- **Estimate of end of month results:** In Analysis, when the user shows "Current month" analysis, an estimate of end-of-month results is displayed.
+
+## [2.0.0] - 2026-02-17
+
+- **Stripe subscription integration:** Paid subscriptions via Stripe Checkout and Billing Portal. Users can subscribe, manage payment method, and cancel (at period end or immediately). Subscription status and cancel-at-period-end are synced from Stripe and shown in Profile (Subscrição). Refresh button to reload status after using the portal.
+- **Subscription lifecycle notifications (Telegram):** Users with Telegram linked and alerts enabled receive messages for subscription activated, reactivated, cancel scheduled, and subscription ended. Admins receive notifications for new subscriptions, reactivations, and cancellations (with user email and cancellation motive). Follow-up message when the user provides cancellation feedback (e.g. “É muito caro”) or comment in the Stripe portal.
+- **Cancel-at-period-end handling:** UI shows “Subscrição cancelada — Período atual termina em [date]” when the user has scheduled cancellation. Backend uses Stripe webhook and API (including `cancel_at` fallback) so cancellation state stays in sync with the Stripe dashboard.
+
+## [1.8.0] - 2026-02-16
+
+- **Vast.ai for PDF extraction:** PDF statement extraction can use a rented Vast.ai GPU instance instead of in-server Ollama or Llama Cloud. Set `EXTRACT_PROVIDER=vast_ai` and configure `VAST_AI_API_KEY` and `VAST_AI_INSTANCE_ID`; the app starts the instance when a user imports a PDF and stops it after the last job (with configurable delay). Optional: `VAST_AI_OLLAMA_URL`, `VAST_AI_START_WAIT_SEC`, `VAST_AI_OLLAMA_READY_WAIT_SEC`, `VAST_AI_STOP_DELAY_SEC`. See docs/development/B014 for local vs production setup.
+
+## [1.7.0] - 2026-02-16
+
+- **Ollama for categorization:** Transaction category suggestion can use local Ollama (e.g. qwen2.5:7b) instead of Claude. Set `LLM_PROVIDER=ollama` and configure `OLLAMA_HOST` and `OLLAMA_MODEL`; Claude remains available when `LLM_PROVIDER=claude`.
+- **Ollama for bank statement parsing:** PDF statement extraction (manual import) can use local Ollama instead of Llama Cloud. Set `EXTRACT_PROVIDER=ollama` with `OLLAMA_HOST` and `OLLAMA_MODEL`; Llama Cloud remains available when `EXTRACT_PROVIDER=llama_cloud`. Ollama path uses pypdf for PDF-to-text and the same JSON schema as the Llama agent.
+
 ## [1.6.0] - 2026-02-15
 
 - **Recurring transactions:** Calendar view: month grid of expected transactions with navigation, summary (count and total), and account filter. Alternative “upcoming” list; dates and amounts respect the user’s locale and UI language.

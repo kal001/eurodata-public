@@ -494,9 +494,9 @@ export default function RecurringCalendar({
               </p>
               <ul className="space-y-2">
                 {entriesByDate[selectedDate].map((entry) => (
-                  <li key={entry.recurring_transaction_id} className="flex items-center justify-between gap-2">
-                    <span>{entry.name}</span>
-                    <span className="text-sm text-slate-500">
+                  <li key={entry.recurring_transaction_id} className="flex items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate">{entry.name}</span>
+                    <span className="text-sm text-slate-500 text-right tabular-nums shrink-0 min-w-[6rem]">
                       {entry.expected_amount != null && entry.expected_amount.trim() !== ""
                         ? formatExpectedAmount(entry.expected_amount, locale)
                         : entry.nominal_amount != null && entry.nominal_amount.trim() !== ""

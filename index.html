@@ -12,16 +12,28 @@
     </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- Preconnect to font and CDN origins to reduce latency -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
+    <!-- Non-render-blocking: load fonts with display=swap (already in URL), apply after load -->
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code&display=swap"
       rel="stylesheet"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code&display=swap" rel="stylesheet" /></noscript>
+    <!-- Non-render-blocking: Font Awesome loaded async to avoid blocking FCP/LCP -->
     <link
       rel="stylesheet"
       href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
       crossorigin="anonymous"
       referrerpolicy="no-referrer"
+      media="print"
+      onload="this.media='all'"
     />
+    <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" /></noscript>
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#2563EB" />
     <meta name="description" content="__VITE_APP_DESCRIPTION__" />

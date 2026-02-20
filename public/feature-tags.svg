@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 320 180" fill="none">
+  <rect width="320" height="180" fill="#f1f5f9" stroke="#e2e8f0" stroke-width="1" rx="8"/>
+  <!-- Tag/label style: pill shapes and list -->
+  <g fill="#2563eb" opacity="0.9">
+    <rect x="40" y="52" width="64" height="24" rx="12"/>
+    <rect x="120" y="52" width="56" height="24" rx="12"/>
+    <rect x="190" y="52" width="72" height="24" rx="12"/>
+  </g>
+  <rect x="40" y="96" width="120" height="12" rx="2" fill="#64748b"/>
+  <rect x="40" y="116" width="80" height="8" rx="2" fill="#e2e8f0"/>
+  <rect x="40" y="136" width="160" height="8" rx="2" fill="#e2e8f0"/>
+</svg>
