@@ -6,11 +6,14 @@ import fs from "fs";
 // When frontend runs in Docker, proxy must target the backend service by name.
 // When running Vite on the host, proxy targets localhost:8000.
 const apiTarget = process.env.VITE_API_PROXY_TARGET || "http://localhost:8000";
+// When backend uses API_VERSION (e.g. v1), proxy /api -> /v1/api so same-origin requests work (e.g. ngrok).
+const apiProxyPrefix = (process.env.VITE_API_PROXY_PREFIX || "").trim();
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, process.cwd(), "");
   const appName = env.VITE_APP_NAME || "Bancos";
   const appDescription = env.VITE_APP_DESCRIPTION || "";
+  const prefix = (env.VITE_API_PROXY_PREFIX || apiProxyPrefix || "").trim();
 
   return {
     plugins: [
@@ -50,8 +53,11 @@ export default defineConfig(({ mode }) => {
       },
     ],
     server: {
+      allowedHosts: true, // allow ngrok and other tunnel hosts (URL changes each run)
       proxy: {
-        "/api": apiTarget,
+        "/api": prefix
+          ? { target: apiTarget, rewrite: (path) => `/${prefix}${path}` }
+          : apiTarget,
       },
     },
   };

@@ -305,10 +305,12 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
   }, [alertsModal.open]);
 
   const filteredBanks = useMemo(() => {
-    if (!search) return banks;
-    return banks.filter((bank) =>
-      bank.name.toLowerCase().includes(search.toLowerCase())
-    );
+    const list = search
+      ? banks.filter((bank) =>
+          bank.name.toLowerCase().includes(search.toLowerCase())
+        )
+      : [...banks];
+    return list.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
   }, [banks, search]);
 
   const headers = useMemo(
@@ -409,16 +411,29 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    // Only treat as bank callback when we have a reference we set (reference/ref, or state that matches our stored one).
+    // Do NOT use state alone: Auth0 (Google login) redirects with ?code=...&state=... and that must not trigger this flow.
+    const refFromUrl = params.get("reference") ?? params.get("ref");
+    const stateFromUrl = params.get("state");
+    const storedRef = window.localStorage.getItem("pf_bank_reference");
     const reference =
-      params.get("reference") ??
-      params.get("ref") ??
-      window.localStorage.getItem("pf_bank_reference");
+      refFromUrl ??
+      (stateFromUrl && storedRef === stateFromUrl ? stateFromUrl : null) ??
+      storedRef;
     if (!reference || !token) return;
     const complete = async () => {
-      const completeRes = await fetch(`${apiBase}/api/banks/requisition/complete?reference=${reference}`, {
-        method: "POST",
-        headers,
-      });
+      const code = params.get("code") ?? undefined;
+      const body = code ? JSON.stringify({ code }) : undefined;
+      const completeRes = await fetch(
+        `${apiBase}/api/banks/requisition/complete?reference=${encodeURIComponent(reference)}`,
+        {
+          method: "POST",
+          headers: body
+            ? { ...headers, "Content-Type": "application/json" }
+            : headers,
+          body,
+        }
+      );
       if (completeRes.status === 429) {
         setToast({ text: t.gocardlessRateLimitExceeded, type: "warning" });
       }
@@ -426,6 +441,8 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
       window.localStorage.removeItem("pf_bank_reference");
       params.delete("reference");
       params.delete("ref");
+      params.delete("state");
+      params.delete("code");
       const query = params.toString();
       const newUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
       window.history.replaceState({}, "", newUrl);
@@ -453,6 +470,9 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
     if (response.ok) {
       const data = await response.json();
       if (data.link) {
+        if (data.reference) {
+          window.localStorage.setItem("pf_bank_reference", data.reference);
+        }
         setIsRedirecting(true);
         window.location.href = data.link;
       }
@@ -859,7 +879,7 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4">
           <div className="card max-w-lg w-full max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="card-title m-0">{t.importStatementTitle ?? "Import statement (PDF)"}</h3>
+              <h3 className="card-title m-0">{t.importStatementTitle ?? "Import statement (PDF or Excel)"}</h3>
               <button
                 type="button"
                 className="bordered-icon-btn shrink-0 inline-flex items-center justify-center border"
@@ -889,14 +909,15 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
                   onDrop={(e) => {
                     e.preventDefault();
                     (e.currentTarget as HTMLElement).style.background = "";
-                    const files = Array.from(e.dataTransfer.files).filter((f) => f.name.toLowerCase().endsWith(".pdf"));
+                    const allowed = (name: string) => /\.(pdf|xls|xlsx)$/i.test(name);
+                    const files = Array.from(e.dataTransfer.files).filter((f) => allowed(f.name));
                     setPdfImportFiles((prev) => [...prev, ...files]);
                   }}
                 >
-                  <p className="text-sm text-slate-600 dark:text-slate-400">{t.importStatementDrop ?? "Drop PDF files here"}</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">{t.importStatementDrop ?? "Drop PDF or Excel files here"}</p>
                   <input
                     type="file"
-                    accept=".pdf,application/pdf"
+                    accept=".pdf,application/pdf,.xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                     multiple
                     className="hidden"
                     id="pdf-import-input"
@@ -1035,7 +1056,8 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
                 </p>
                 {pdfImportWizardMode === null ? (
                   <>
-                    {pdfImportMatch?.match === "one" && pdfImportTargetAccountId ? (
+                    {/* Single account: either auto-matched or import started from account card */}
+                    {(pdfImportTargetAccountId != null && (pdfImportMatch?.match === "one" || pdfImportPreSelectAccountId != null)) ? (
                       <div className="mt-3">
                         <p className="text-sm">
                           {t.importToAccount ?? "Import to"}: {accounts.find((a) => a.id === pdfImportTargetAccountId)?.friendly_name ?? accounts.find((a) => a.id === pdfImportTargetAccountId)?.institution_name ?? `Account #${pdfImportTargetAccountId}`}
@@ -1485,8 +1507,8 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
               setPdfImportWizardMode(null);
               setPdfImportError(null);
             }}
-            title={t.importStatementTitle ?? "Import statement (PDF)"}
-            aria-label={t.importStatementTitle ?? "Import statement (PDF)"}
+title={t.importStatementTitle ?? "Import statement (PDF or Excel)"}
+              aria-label={t.importStatementTitle ?? "Import statement (PDF or Excel)"}
           >
             <i className="fa-solid fa-file-import text-sm" aria-hidden />
           </button>
@@ -1552,6 +1574,15 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
                 </div>
                 <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
                   {account.institution_name ?? account.account_name ?? account.account_id ?? account.country}
+                  {account.account_source === "enable_banking" ? (
+                    <span className="ml-1.5 text-[10px] uppercase tracking-wide text-blue-600 dark:text-blue-400" title="Linked via Enable Banking">
+                      Enable Banking
+                    </span>
+                  ) : account.account_source === "nordigen" ? (
+                    <span className="ml-1.5 text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500" title="Linked via GoCardless/Nordigen">
+                      GoCardless
+                    </span>
+                  ) : null}
                 </p>
                 {showBalances && account.current_balance != null && (
                   <div className="text-sm font-semibold mt-1">
@@ -1757,9 +1788,11 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
               >
                 <div className="flex items-center gap-3">
                   {bank.logo ? (
-                    <img src={bank.logo} alt={bank.name} className="h-10 w-10" />
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center overflow-hidden rounded">
+                      <img src={bank.logo} alt={bank.name} className="max-h-full max-w-full object-contain" />
+                    </div>
                   ) : (
-                    <div className="h-10 w-10 rounded-full bg-slate-200 dark:bg-slate-700"></div>
+                    <div className="h-10 w-10 shrink-0 rounded-full bg-slate-200 dark:bg-slate-700" />
                   )}
                   <div className="text-left">
                     <div className="text-sm font-semibold">{bank.name}</div>

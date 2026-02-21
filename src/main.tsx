@@ -43,6 +43,7 @@ if (!hasAuthConfig) {
         clientId={clientId}
         cacheLocation="localstorage"
         useRefreshTokens
+        skipRedirectCallback={window.location.pathname === '/callback'}
         authorizationParams={{
           redirect_uri: window.location.origin,
           audience,

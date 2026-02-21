@@ -268,15 +268,17 @@ export default function RecurringTransactions({
     setLoading(true);
     try {
       if (selectedAccountId === "all") {
-        const results: RecurringItem[] = [];
-        for (const acc of accounts) {
-          const res = await api(`/api/accounts/${acc.id}/recurring-transactions`);
-          if (res.ok) {
-            const data = await res.json();
-            results.push(...data);
-          }
-        }
-        setList(results);
+        const results = await Promise.all(
+          accounts.map(async (acc) => {
+            const res = await api(`/api/accounts/${acc.id}/recurring-transactions`);
+            if (res.ok) {
+              const data = await res.json();
+              return data as RecurringItem[];
+            }
+            return [];
+          })
+        );
+        setList(results.flat());
       } else {
         const res = await api(`/api/accounts/${selectedAccountId}/recurring-transactions`);
         if (res.ok) {

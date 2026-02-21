@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, and this project adheres to
 Semantic Versioning.
 
+## [2.3.1] - 2026-02-21
+
+- **Enable Banking working:** Bank link flow via Enable Banking now works correctly. Returning from the bank no longer logs the user out: Auth0 no longer treats the bank callback URL as an Auth0 callback (`skipRedirectCallback` on `/callback`), so the session is preserved and the link completes without the 20s wait or "Session expired" screen.
+
 ## [2.2.0] - 2026-02-19
 
 - **Estimate of end of month results:** In Analysis, when the user shows "Current month" analysis, an estimate of end-of-month results is displayed.

@@ -185,7 +185,7 @@ const translations = {
       "This privacy policy applies to the eurodata.app web application (Bancos), which provides bank and card statement tracking and insights. The service is intended for users in Europe.",
     privacySection2Title: "2. Data we collect",
     privacySection2Content:
-      "We only collect and process data that is necessary to provide the service: account information you configure (e.g. display name, country, notification preferences), authentication data handled by Auth0 (e.g. email, login), and bank transaction data that you link via open banking (Nordigen/GoCardless) solely to display and categorize your transactions. We do not collect or store data for advertising or analytics that identify you.",
+      "We only collect and process data that is necessary to provide the service: account information you configure (e.g. display name, country, notification preferences), authentication data handled by Auth0 (e.g. email, login), and bank transaction data that you link via open banking (Nordigen/GoCardless or Enable Banking) solely to display and categorize your transactions. We do not collect or store data for advertising or analytics that identify you.",
     privacySection3Title: "3. How we use your data",
     privacySection3Content:
       "We use your data exclusively to operate the application: to authenticate you, to fetch and display your transactions, to run AI-assisted categorization based on your categories, and to send you optional alerts (e.g. Telegram, weekly email) if you have enabled them. We do not use your information for marketing, and we do not share or sell your personal or financial data to any third party.",
@@ -197,7 +197,7 @@ const translations = {
       "We use strictly necessary cookies and local storage for session and authentication (e.g. Auth0). We do not use cookies or similar technologies for advertising or cross-site tracking. You can control cookies through your browser settings.",
     privacySection6Title: "6. Third-party services",
     privacySection6Content:
-      "We use Auth0 for authentication, and open banking providers (e.g. GoCardless/Nordigen) to retrieve your bank data with your consent. These providers process data according to their own privacy policies. We do not pass your data to any other third parties for their marketing or other purposes.",
+      "We use Auth0 for authentication, and open banking providers (e.g. GoCardless/Nordigen or Enable Banking) to retrieve your bank data with your consent. These providers process data according to their own privacy policies. We do not pass your data to any other third parties for their marketing or other purposes.",
     privacySection7Title: "7. Your rights",
     privacySection7Content:
       "Depending on your location (including under the GDPR if you are in the European Economic Area), you may have the right to access, correct, export, or delete your personal data, to object to or restrict certain processing, and to lodge a complaint with a supervisory authority. To exercise these rights, please contact us using the details below.",
@@ -416,8 +416,8 @@ const translations = {
     transactionsFailed: "Failed to fetch transactions.",
     transactionsLimitReached: "Daily transaction fetch limit reached.",
     gocardlessRateLimitExceeded: "Daily rate limit exceeded with bank provider. Try again later.",
-    importStatementTitle: "Import statement (PDF)",
-    importStatementDrop: "Drop PDF files here",
+    importStatementTitle: "Import statement (PDF or Excel)",
+    importStatementDrop: "Drop PDF or Excel files here",
     importStatementSelectFiles: "Select files",
     importStatementParsing: "Analysing...",
     importStatementAnalyse: "Analyse",
@@ -705,6 +705,7 @@ const translations = {
     onboardingAddAccount: "Add account",
     onboardingConnectBank: "Connect bank",
     onboardingCompleting: "Redirecting to your bank...",
+    bankLinkCompleteError: "The bank link could not be completed. The authorization may have expired. Please try linking the account again.",
     onboardingFriendlyNameSave: "Save account name",
     onboardingAccountsTitle: "Linked accounts",
     onboardingRequired: "Please add at least one account.",
@@ -1248,8 +1249,8 @@ const translations = {
     transactionsFailed: "Falha ao obter transações.",
     transactionsLimitReached: "Limite diário de transações atingido.",
     gocardlessRateLimitExceeded: "Limite diário do fornecedor do banco excedido. Tente mais tarde.",
-    importStatementTitle: "Importar extrato (PDF)",
-    importStatementDrop: "Arraste ficheiros PDF para aqui",
+    importStatementTitle: "Importar extrato (PDF ou Excel)",
+    importStatementDrop: "Arraste ficheiros PDF ou Excel para aqui",
     importStatementSelectFiles: "Selecionar ficheiros",
     importStatementParsing: "A analisar...",
     importStatementAnalyse: "Analisar",
@@ -1507,6 +1508,7 @@ const translations = {
     onboardingAddAccount: "Adicionar conta",
     onboardingConnectBank: "Ligar banco",
     onboardingCompleting: "A redirecionar para o banco...",
+    bankLinkCompleteError: "Não foi possível concluir a ligação ao banco. A autorização pode ter expirado. Tente ligar a conta novamente.",
     onboardingFriendlyNameSave: "Guardar nome da conta",
     onboardingAccountsTitle: "Contas ligadas",
     onboardingRequired: "Adicione pelo menos uma conta.",
@@ -2049,8 +2051,8 @@ const translations = {
     transactionsFailed: "Error al obtener transacciones.",
     transactionsLimitReached: "Límite diario alcanzado.",
     gocardlessRateLimitExceeded: "Límite diario del proveedor bancario excedido. Inténtelo más tarde.",
-    importStatementTitle: "Importar extracto (PDF)",
-    importStatementDrop: "Suelte aquí los archivos PDF",
+    importStatementTitle: "Importar extracto (PDF o Excel)",
+    importStatementDrop: "Suelte aquí los archivos PDF o Excel",
     importStatementSelectFiles: "Seleccionar archivos",
     importStatementParsing: "Analizando...",
     importStatementAnalyse: "Analizar",
@@ -2850,8 +2852,8 @@ const translations = {
     transactionsFailed: "Échec de récupération des transactions.",
     transactionsLimitReached: "Limite quotidienne atteinte.",
     gocardlessRateLimitExceeded: "Limite quotidienne du fournisseur bancaire dépassée. Réessayez plus tard.",
-    importStatementTitle: "Importer un relevé (PDF)",
-    importStatementDrop: "Déposez les fichiers PDF ici",
+    importStatementTitle: "Importer un relevé (PDF ou Excel)",
+    importStatementDrop: "Déposez les fichiers PDF ou Excel ici",
     importStatementSelectFiles: "Sélectionner des fichiers",
     importStatementParsing: "Analyse en cours...",
     importStatementAnalyse: "Analyser",
@@ -3430,6 +3432,7 @@ function App() {
     loginWithRedirect,
     logout,
     isAuthenticated,
+    isLoading: auth0Loading,
     user,
     getAccessTokenSilently,
   } = useAuth0();
@@ -3488,6 +3491,7 @@ function App() {
       logo_url?: string | null;
       status: string;
       updated_at: string;
+      provider?: string;
     }[]
   >([]);
   const [bankAccounts, setBankAccounts] = useState<
@@ -3501,7 +3505,7 @@ function App() {
       institution_name: string;
       country: string;
       logo_url?: string | null;
-      account_source?: string;
+      account_source?: string; // "nordigen" | "enable_banking" | "manual" – which API the connection uses
       alert_above_amount?: number | null;
       alert_below_amount?: number | null;
       current_balance?: number | null;
@@ -3940,6 +3944,8 @@ function App() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
+    // Only treat explicit bank callback params (reference/ref). Do NOT use "state" here:
+    // Auth0 (Google login) also redirects with ?code=...&state=... and we must not consume that.
     const reference = params.get("reference") ?? params.get("ref");
     let didChange = false;
     if (reference) {
@@ -4058,6 +4064,29 @@ function App() {
     logout({ logoutParams: { returnTo: window.location.origin } });
   }, [apiBase, apiToken, logout]);
 
+  const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+  const inactivityTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    if (!isAuthenticated) return;
+    const scheduleLogout = () => {
+      if (inactivityTimeoutRef.current) clearTimeout(inactivityTimeoutRef.current);
+      inactivityTimeoutRef.current = setTimeout(() => {
+        inactivityTimeoutRef.current = null;
+        handleLogout();
+      }, INACTIVITY_TIMEOUT_MS);
+    };
+    const events = ["mousedown", "mousemove", "keydown", "scroll", "touchstart", "click"];
+    events.forEach((ev) => window.addEventListener(ev, scheduleLogout));
+    scheduleLogout();
+    return () => {
+      events.forEach((ev) => window.removeEventListener(ev, scheduleLogout));
+      if (inactivityTimeoutRef.current) {
+        clearTimeout(inactivityTimeoutRef.current);
+        inactivityTimeoutRef.current = null;
+      }
+    };
+  }, [isAuthenticated, handleLogout]);
+
   const loadConnections = useCallback(async () => {
     if (!apiToken) {
       setBankConnections([]);
@@ -4086,12 +4115,193 @@ function App() {
         cache: "no-store",
       });
       if (response.ok) {
-        setBankAccounts(await response.json());
+        const data = await response.json();
+        setBankAccounts(data);
       }
     } catch {
       setBankAccounts([]);
     }
   }, [apiBase, apiToken]);
+
+  const [bankCallbackStatus, setBankCallbackStatus] = useState<"waiting" | "completing" | "done" | "session_lost" | null>(null);
+  const bankCallbackDoneRef = useRef(false);
+  /** True while we are completing a bank link from sessionStorage (pending flow). Used so [loadAccounts] effect does not overwrite with stale count. */
+  const bankCallbackInProgressRef = useRef(false);
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const stateFromUrl = params.get("state");
+    const codeFromUrl = params.get("code");
+    const storedRef = window.localStorage.getItem("pf_bank_reference");
+    const isBankCallback =
+      window.location.pathname === "/callback" &&
+      stateFromUrl != null &&
+      codeFromUrl != null &&
+      (storedRef === stateFromUrl || storedRef != null);
+    if (!isBankCallback || bankCallbackDoneRef.current) {
+      if (!isBankCallback) setBankCallbackStatus(null);
+      return;
+    }
+    if (auth0Loading) {
+      setBankCallbackStatus("waiting");
+      return;
+    }
+    if (!isAuthenticated) {
+      setBankCallbackStatus("waiting");
+      // Give Auth0 time to restore session after redirect from bank (e.g. Enable Banking).
+      const timeout = setTimeout(() => {
+        const p = new URLSearchParams(window.location.search);
+        const s = p.get("state");
+        const c = p.get("code");
+        if (!s || !c) return;
+        try {
+          sessionStorage.setItem("pf_bank_callback_pending", JSON.stringify({ state: s, code: c }));
+        } catch {
+          // ignore
+        }
+        setBankCallbackStatus("session_lost");
+        p.delete("state");
+        p.delete("code");
+        window.history.replaceState({}, "", window.location.pathname + (p.toString() ? `?${p}` : ""));
+        window.localStorage.removeItem("pf_bank_reference");
+      }, 20000);
+      return () => clearTimeout(timeout);
+    }
+    setBankCallbackStatus("completing");
+    bankCallbackDoneRef.current = true;
+    (async () => {
+      try {
+        const token = await getAccessTokenSilently({
+          authorizationParams: { audience: import.meta.env.VITE_AUTH0_AUDIENCE },
+        });
+        const completeRes = await fetch(
+          `${apiBase}/api/banks/requisition/complete?reference=${encodeURIComponent(stateFromUrl!)}`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ code: codeFromUrl }),
+          }
+        );
+        if (completeRes.ok) {
+          window.localStorage.removeItem("pf_bank_reference");
+          params.delete("state");
+          params.delete("code");
+          window.history.replaceState({}, "", window.location.pathname + (params.toString() ? `?${params}` : ""));
+          const accountsRes = await fetch(`${apiBase}/api/accounts?_t=${Date.now()}`, {
+            headers: { Authorization: `Bearer ${token}` },
+            cache: "no-store",
+          });
+          if (accountsRes.ok) {
+            const accountsData = await accountsRes.json();
+            setBankAccounts(accountsData);
+          }
+          setActiveSection("accounts");
+          [1000, 3000, 6000].forEach((delayMs) => {
+            setTimeout(async () => {
+              try {
+                const t2 = await getAccessTokenSilently({
+                  authorizationParams: { audience: import.meta.env.VITE_AUTH0_AUDIENCE },
+                });
+                const r = await fetch(`${apiBase}/api/accounts?_t=${Date.now()}`, {
+                  headers: { Authorization: `Bearer ${t2}` },
+                  cache: "no-store",
+                });
+                if (r.ok) {
+                  const refetchData = await r.json();
+                  setBankAccounts(refetchData);
+                }
+              } catch {
+                // ignore
+              }
+            }, delayMs);
+          });
+        } else {
+          showToast(t.bankLinkCompleteError ?? "The bank link could not be completed. Please try linking the account again.", "error");
+        }
+        setBankCallbackStatus(null);
+      } catch (err) {
+        console.error("[BankLink] callback: error", err);
+        showToast(t.bankLinkCompleteError ?? "The bank link could not be completed. Please try linking the account again.", "error");
+        setBankCallbackStatus(null);
+      }
+    })();
+  }, [apiBase, auth0Loading, isAuthenticated, getAccessTokenSilently, showToast, t.bankLinkCompleteError]);
+
+  // After login from "session_lost": complete bank link using params we stored before clearing URL.
+  useEffect(() => {
+    if (auth0Loading || !isAuthenticated || bankCallbackDoneRef.current) return;
+    let pending: { state: string; code: string } | null = null;
+    try {
+      const raw = sessionStorage.getItem("pf_bank_callback_pending");
+      if (!raw) return;
+      pending = JSON.parse(raw) as { state: string; code: string };
+      if (!pending?.state || !pending.code) return;
+    } catch {
+      return;
+    }
+    bankCallbackInProgressRef.current = true;
+    bankCallbackDoneRef.current = true;
+    setBankCallbackStatus("completing");
+    (async () => {
+      try {
+        const token = await getAccessTokenSilently({
+          authorizationParams: { audience: import.meta.env.VITE_AUTH0_AUDIENCE },
+        });
+        const completeRes = await fetch(
+          `${apiBase}/api/banks/requisition/complete?reference=${encodeURIComponent(pending!.state)}`,
+          {
+            method: "POST",
+            headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+            body: JSON.stringify({ code: pending!.code }),
+          }
+        );
+        if (completeRes.ok) {
+          window.localStorage.removeItem("pf_bank_reference");
+          const accountsRes = await fetch(`${apiBase}/api/accounts?_t=${Date.now()}`, {
+            headers: { Authorization: `Bearer ${token}` },
+            cache: "no-store",
+          });
+          if (accountsRes.ok) {
+            const accountsData = await accountsRes.json();
+            setBankAccounts(accountsData);
+          }
+          setActiveSection("accounts");
+          [1000, 3000, 6000].forEach((delayMs) => {
+            setTimeout(async () => {
+              try {
+                const t2 = await getAccessTokenSilently({
+                  authorizationParams: { audience: import.meta.env.VITE_AUTH0_AUDIENCE },
+                });
+                const r = await fetch(`${apiBase}/api/accounts?_t=${Date.now()}`, {
+                  headers: { Authorization: `Bearer ${t2}` },
+                  cache: "no-store",
+                });
+                if (r.ok) {
+                  const refetchData = await r.json();
+                  setBankAccounts(refetchData);
+                }
+              } catch {
+                // ignore
+              }
+            }, delayMs);
+          });
+        } else {
+          showToast(t.bankLinkCompleteError ?? "The bank link could not be completed. Please try linking the account again.", "error");
+        }
+      } catch (err) {
+        console.error("[BankLink] pending: error", err);
+        showToast(t.bankLinkCompleteError ?? "The bank link could not be completed. Please try linking the account again.", "error");
+        loadAccounts(); // On failure, refresh list since we skipped the initial load while pending
+      } finally {
+        setBankCallbackStatus(null);
+        sessionStorage.removeItem("pf_bank_callback_pending");
+        // Clear ref after delay so [loadAccounts] effect (which may run when apiToken is set late) still skips and does not overwrite with stale 3.
+        const clearRefDelayMs = 5000;
+        setTimeout(() => {
+          bankCallbackInProgressRef.current = false;
+        }, clearRefDelayMs);
+      }
+    })();
+  }, [apiBase, auth0Loading, isAuthenticated, getAccessTokenSilently, loadAccounts, showToast, t.bankLinkCompleteError]);
 
   const loadApiTokens = useCallback(async () => {
     if (!apiToken) {
@@ -4456,6 +4666,8 @@ function App() {
   }, [loadConnections]);
 
   useEffect(() => {
+    // Skip so we don't overwrite bank accounts while pending bank callback is completing (see BANK_LINK_FLOW_ANALYSIS.md). Use ref so we skip regardless of when apiToken/loadProfile completes.
+    if (bankCallbackInProgressRef.current) return;
     loadAccounts();
   }, [loadAccounts]);
 
@@ -5825,6 +6037,30 @@ function App() {
     { id: "insights", labelKey: "navInsights", icon: "fa-chart-line" },
     { id: "recurring", labelKey: "navRecurring", icon: "fa-arrows-rotate" },
   ];
+
+  if (bankCallbackStatus === "waiting" || bankCallbackStatus === "completing") {
+    return (
+      <div className="min-h-screen min-w-0 flex flex-col items-center justify-center bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">
+        <p className="text-lg text-slate-600 dark:text-slate-300">{t.onboardingCompleting ?? "Completing bank connection..."}</p>
+      </div>
+    );
+  }
+  if (bankCallbackStatus === "session_lost") {
+    return (
+      <div className="min-h-screen min-w-0 flex flex-col items-center justify-center gap-4 bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">
+        <p className="text-lg text-slate-600 dark:text-slate-300">
+          {t.sessionExpiredBankCallback ?? "Session expired. Please log in again to see your linked account."}
+        </p>
+        <button
+          type="button"
+          className="rounded-lg bg-blue-600 px-4 py-2 text-white hover:bg-blue-700"
+          onClick={() => loginWithRedirect()}
+        >
+          {t.menuLogin ?? "Log in"}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen min-w-0 overflow-x-hidden bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100">
@@ -7966,6 +8202,32 @@ function App() {
             >
               <i className="fa-regular fa-circle-question" aria-hidden />
             </button>
+            <div className="absolute top-14 right-4 z-10 flex items-center gap-2">
+              <button
+                type="button"
+                className="bordered-icon-btn shrink-0 inline-flex items-center justify-center border rounded-full w-8 h-8 disabled:opacity-50 disabled:pointer-events-none"
+                style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-secondary)" }}
+                onClick={() => refreshAllTransactions()}
+                disabled={balancesRefreshing || transactionsRefreshing}
+                title={transactionsRefreshing ? t.refreshingTransactions : t.refreshTransactions}
+                aria-label={transactionsRefreshing ? t.refreshingTransactions : t.refreshTransactions}
+              >
+                <i className={`fa-solid fa-arrows-rotate ${transactionsRefreshing ? "fa-spin" : ""}`} aria-hidden />
+              </button>
+              {profile?.show_account_balances ? (
+                <button
+                  type="button"
+                  className="bordered-icon-btn shrink-0 inline-flex items-center justify-center border rounded-full w-8 h-8 disabled:opacity-50 disabled:pointer-events-none"
+                  style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-secondary)" }}
+                  onClick={() => refreshBalances()}
+                  disabled={balancesRefreshing || transactionsRefreshing}
+                  title={balancesRefreshing ? t.refreshingBalances : t.refreshBalances}
+                  aria-label={balancesRefreshing ? t.refreshingBalances : t.refreshBalances}
+                >
+                  <i className={`fa-solid fa-scale-balanced ${balancesRefreshing ? "fa-spin" : ""}`} aria-hidden />
+                </button>
+              ) : null}
+            </div>
             {transactionDeleteConfirm ? (
               <div
                 className="modal-overlay"
@@ -8069,31 +8331,7 @@ function App() {
             ) : null}
             {/* Account cards: always shown when there are accounts; balance only when profile has show_account_balances */}
             {bankAccounts.length > 0 ? (
-              <section className="mx-auto max-w-6xl px-6 pt-10 pb-4">
-                <div className="flex items-center justify-start gap-3 mb-3">
-                  {profile?.show_account_balances ? (
-                    <button
-                      type="button"
-                      className="icon-button p-2 rounded-md border border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-50 disabled:pointer-events-none"
-                      onClick={() => refreshBalances()}
-                      disabled={balancesRefreshing || transactionsRefreshing}
-                      title={balancesRefreshing ? t.refreshingBalances : t.refreshBalances}
-                      aria-label={balancesRefreshing ? t.refreshingBalances : t.refreshBalances}
-                    >
-                      <i className={`fa-solid fa-scale-balanced ${balancesRefreshing ? "fa-spin" : ""}`} aria-hidden />
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="icon-button p-2 rounded-md border border-slate-200 bg-slate-50 hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 disabled:opacity-50 disabled:pointer-events-none"
-                    onClick={() => refreshAllTransactions()}
-                    disabled={balancesRefreshing || transactionsRefreshing}
-                    title={transactionsRefreshing ? t.refreshingTransactions : t.refreshTransactions}
-                    aria-label={transactionsRefreshing ? t.refreshingTransactions : t.refreshTransactions}
-                  >
-                    <i className={`fa-solid fa-arrows-rotate ${transactionsRefreshing ? "fa-spin" : ""}`} aria-hidden />
-                  </button>
-                </div>
+              <section className="mx-auto max-w-6xl px-6 pt-24 pb-4">
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {bankAccounts.map((account) => (
                     <div
@@ -8107,11 +8345,13 @@ function App() {
                       <div className="flex items-start justify-between gap-2">
                         <div className="flex items-center gap-3 min-w-0 flex-1">
                           {account.logo_url ? (
-                            <img
-                              src={account.logo_url}
-                              alt={account.institution_name}
-                              className="h-10 w-10 rounded flex-shrink-0"
-                            />
+                            <div className="h-10 w-10 rounded flex-shrink-0 overflow-hidden flex items-center justify-center bg-slate-100 dark:bg-slate-800">
+                              <img
+                                src={account.logo_url}
+                                alt={account.institution_name}
+                                className="max-h-full max-w-full object-contain"
+                              />
+                            </div>
                           ) : (
                             <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 dark:bg-slate-700 flex-shrink-0">
                               <i className="fa-solid fa-building-columns text-slate-500 dark:text-slate-400" />
@@ -8135,6 +8375,15 @@ function App() {
                             </h3>
                             <p className="text-xs text-slate-500 dark:text-slate-400">
                               {account.institution_name}
+                              {account.account_source === "enable_banking" ? (
+                                <span className="ml-1.5 text-[10px] uppercase tracking-wide text-blue-600 dark:text-blue-400" title="Linked via Enable Banking">
+                                  Enable Banking
+                                </span>
+                              ) : account.account_source === "nordigen" ? (
+                                <span className="ml-1.5 text-[10px] uppercase tracking-wide text-slate-400 dark:text-slate-500" title="Linked via GoCardless/Nordigen">
+                                  GoCardless
+                                </span>
+                              ) : null}
                             </p>
                           </div>
                         </div>
