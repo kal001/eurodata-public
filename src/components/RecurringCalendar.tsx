@@ -2,7 +2,7 @@
  * Recurring calendar view (B012 Phase 5).
  * Month grid of expected payments + list view alternative.
  */
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export type CalendarEntry = {
   date: string;
@@ -15,6 +15,8 @@ export type CalendarEntry = {
   occurrence_id: number | null;
   bank_transaction_id: number | null;
   is_matched: boolean;
+  is_missed?: boolean;
+  currency?: string | null;
 };
 
 export type UpcomingEntry = {
@@ -25,6 +27,7 @@ export type UpcomingEntry = {
   expected_amount: string | null;
   nominal_amount: string | null;
   status: string;
+  currency?: string | null;
 };
 
 export type AccountOption = {
@@ -32,6 +35,12 @@ export type AccountOption = {
   friendly_name?: string | null;
   account_name?: string | null;
   institution_name: string;
+};
+
+export type CalendarSummaryFromServer = {
+  count: number;
+  total_in_base_currency: number;
+  base_currency: string;
 };
 
 type Props = {
@@ -42,6 +51,8 @@ type Props = {
   onAccountChange: (id: number | "all") => void;
   onOpenRecurring: (recurringId: number) => void;
   locale: string;
+  /** User base currency; when set, API returns summary with converted total */
+  base_currency?: string | null;
   t: {
     filterAccount: string;
     filterAccountAll: string;
@@ -55,6 +66,8 @@ type Props = {
     recurringEdit: string;
     recurringEmpty: string;
     calendarUpcoming: string;
+    recurringOccurred?: string;
+    recurringMissed?: string;
   };
 };
 
@@ -70,7 +83,10 @@ function getWeekdayHeaders(locale: string): string[] {
 }
 
 function formatMonthYear(date: Date, locale: string): string {
-  return date.toLocaleDateString(locale, { month: "long", year: "numeric" });
+  const parts = new Intl.DateTimeFormat(locale, { month: "long", year: "numeric" }).formatToParts(date);
+  const month = parts.find((p) => p.type === "month")?.value ?? "";
+  const year = parts.find((p) => p.type === "year")?.value ?? "";
+  return `${month} ${year}`.trim();
 }
 
 function formatAmount(value: number, locale: string): string {
@@ -80,16 +96,21 @@ function formatAmount(value: number, locale: string): string {
   }).format(value);
 }
 
-function formatExpectedAmount(amountStr: string | null, locale: string): string {
+function formatExpectedAmount(amountStr: string | null, locale: string, currency?: string | null): string {
   if (amountStr == null || amountStr === "") return "—";
   const trimmed = amountStr.trim();
   const sign = trimmed.startsWith("+") ? "+" : trimmed.startsWith("-") ? "-" : "";
   const num = parseFloat(trimmed.replace(/^[+-]/, "").trim());
   if (Number.isNaN(num)) return amountStr;
+  const absNum = Math.abs(num);
+  const cur = (currency ?? "EUR").trim().toUpperCase() || "EUR";
   const formatted = new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: cur,
+    currencyDisplay: "narrowSymbol",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(Math.abs(num));
+  }).format(absNum);
   return sign + formatted;
 }
 
@@ -124,12 +145,14 @@ export default function RecurringCalendar({
   onAccountChange,
   onOpenRecurring,
   locale,
+  base_currency,
   t,
 }: Props) {
   const [viewMode, setViewMode] = useState<"calendar" | "list">("calendar");
   const [calendarYear, setCalendarYear] = useState(() => new Date().getFullYear());
   const [calendarMonth, setCalendarMonth] = useState(() => new Date().getMonth() + 1);
   const [calendarEntries, setCalendarEntries] = useState<CalendarEntry[]>([]);
+  const [calendarSummary, setCalendarSummary] = useState<CalendarSummaryFromServer | null>(null);
   const [upcomingEntries, setUpcomingEntries] = useState<UpcomingEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
@@ -139,6 +162,8 @@ export default function RecurringCalendar({
     [selectedAccountId, accounts]
   );
 
+  const lastFetchKeyRef = useRef<string>("");
+
   const fetchCalendar = useCallback(async () => {
     if (accountIds.length === 0) {
       setCalendarEntries([]);
@@ -146,28 +171,49 @@ export default function RecurringCalendar({
     }
     setLoading(true);
     try {
-      const allEntries: CalendarEntry[] = [];
-      for (const aid of accountIds) {
-        const res = await fetch(
-          `${apiBase}/api/recurring-calendar?account_id=${aid}&year=${calendarYear}&month=${calendarMonth}`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        if (res.ok) {
-          const data = await res.json();
-          allEntries.push(...data);
-        }
-      }
-      allEntries.sort((a, b) => {
-        const d = a.date.localeCompare(b.date);
-        return d !== 0 ? d : (a.name || "").localeCompare(b.name || "");
+      const authHeaders = { Authorization: `Bearer ${token}` };
+      const params = new URLSearchParams({
+        year: String(calendarYear),
+        month: String(calendarMonth),
       });
-      setCalendarEntries(allEntries);
+      if (accountIds.length === 1) {
+        params.set("account_id", String(accountIds[0]));
+      } else {
+        accountIds.forEach((id) => params.append("account_ids", String(id)));
+      }
+      if (base_currency?.trim()) {
+        params.set("base_currency", base_currency.trim());
+      }
+      const res = await fetch(`${apiBase}/api/recurring-calendar?${params}`, {
+        headers: authHeaders,
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const allEntries: CalendarEntry[] = Array.isArray(data?.entries)
+          ? data.entries
+          : Array.isArray(data)
+            ? data
+            : [];
+        allEntries.sort((a, b) => {
+          const d = a.date.localeCompare(b.date);
+          return d !== 0 ? d : (a.name || "").localeCompare(b.name || "");
+        });
+        setCalendarEntries(allEntries);
+        setCalendarSummary(
+          data?.summary && typeof data.summary === "object" && typeof data.summary.total_in_base_currency === "number"
+            ? data.summary as CalendarSummaryFromServer
+            : null
+        );
+      } else {
+        setCalendarEntries([]);
+        setCalendarSummary(null);
+      }
     } catch {
       setCalendarEntries([]);
     } finally {
       setLoading(false);
     }
-  }, [apiBase, token, accountIds, calendarYear, calendarMonth]);
+  }, [apiBase, token, accountIds, calendarYear, calendarMonth, base_currency]);
 
   const fetchUpcoming = useCallback(async () => {
     setLoading(true);
@@ -191,9 +237,15 @@ export default function RecurringCalendar({
   }, [apiBase, token, selectedAccountId]);
 
   useEffect(() => {
+    const key =
+      viewMode === "calendar"
+        ? `calendar-${accountIds.join(",")}-${calendarYear}-${calendarMonth}`
+        : `upcoming-${selectedAccountId}`;
+    if (key === lastFetchKeyRef.current) return;
+    lastFetchKeyRef.current = key;
     if (viewMode === "calendar") fetchCalendar();
     else fetchUpcoming();
-  }, [viewMode, fetchCalendar, fetchUpcoming]);
+  }, [viewMode, accountIds, calendarYear, calendarMonth, selectedAccountId, fetchCalendar, fetchUpcoming]);
 
   const goToToday = useCallback(() => {
     const now = new Date();
@@ -230,6 +282,7 @@ export default function RecurringCalendar({
           ? e.date.slice(0, 10)
           : e.date;
       if (dateNorm < todayStr) continue;
+      if (e.is_matched) continue;
       const key = `${dateNorm}|${e.recurring_transaction_id}`;
       if (seen.has(key)) continue;
       seen.add(key);
@@ -318,9 +371,9 @@ export default function RecurringCalendar({
                         });
                       })()}{" "}
                       · {entry.expected_amount != null && entry.expected_amount.trim() !== ""
-                        ? formatExpectedAmount(entry.expected_amount, locale)
+                        ? formatExpectedAmount(entry.expected_amount, locale, entry.currency)
                         : entry.nominal_amount != null && entry.nominal_amount.trim() !== ""
-                          ? "~" + formatExpectedAmount(entry.nominal_amount, locale)
+                          ? "~" + formatExpectedAmount(entry.nominal_amount, locale, entry.currency)
                           : t.recurringAmountVaries}
                     </span>
                   </div>
@@ -397,9 +450,25 @@ export default function RecurringCalendar({
               </button>
             </div>
             <div className="text-sm text-slate-600 dark:text-slate-400">
-              {t.calendarSummaryTransactions.replace("{n}", String(summary.count))}
-              {summary.count > 0 && (
-                <> · {t.calendarSummaryAmount}: {formatAmount(summary.total, locale)}</>
+              {t.calendarSummaryTransactions.replace(
+                "{n}",
+                String(calendarSummary?.count ?? summary.count)
+              )}
+              {(calendarSummary?.count ?? summary.count) > 0 && (
+                <> · {t.calendarSummaryAmount}:{" "}
+                  {calendarSummary
+                    ? (() => {
+                        const cur = (calendarSummary.base_currency || "EUR").trim().toUpperCase() || "EUR";
+                        return new Intl.NumberFormat(locale, {
+                          style: "currency",
+                          currency: cur,
+                          currencyDisplay: "narrowSymbol",
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        }).format(calendarSummary.total_in_base_currency);
+                      })()
+                    : formatAmount(summary.total, locale)}
+                </>
               )}
             </div>
           </div>
@@ -452,18 +521,25 @@ export default function RecurringCalendar({
                             <button
                               key={`${entry.recurring_transaction_id}-${entry.date}`}
                               type="button"
-                              className={`w-full text-left px-1.5 py-0.5 rounded text-xs truncate block ${
+                              className={`w-full text-left px-1.5 py-0.5 rounded text-xs truncate block flex items-center gap-1 min-w-0 ${
                                 entry.is_matched
                                   ? "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-800 dark:text-emerald-200"
-                                  : "bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200"
+                                  : entry.is_missed
+                                    ? "bg-red-100 dark:bg-red-900/30 text-red-800 dark:text-red-200"
+                                    : "bg-slate-100 dark:bg-slate-700 text-slate-800 dark:text-slate-200"
                               }`}
-                              title={`${entry.name} · ${entry.expected_amount != null && entry.expected_amount.trim() !== "" ? formatExpectedAmount(entry.expected_amount, locale) : entry.nominal_amount != null && entry.nominal_amount.trim() !== "" ? "~" + formatExpectedAmount(entry.nominal_amount, locale) : t.recurringAmountVaries}`}
+                              title={`${entry.name} · ${entry.expected_amount != null && entry.expected_amount.trim() !== "" ? formatExpectedAmount(entry.expected_amount, locale, entry.currency) : entry.nominal_amount != null && entry.nominal_amount.trim() !== "" ? "~" + formatExpectedAmount(entry.nominal_amount, locale, entry.currency) : t.recurringAmountVaries}${entry.is_matched ? ` · ${t.recurringOccurred ?? "Occurred"}` : entry.is_missed ? ` · ${t.recurringMissed ?? "Missed"}` : ""}`}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onOpenRecurring(entry.recurring_transaction_id);
                               }}
                             >
-                              {entry.name} {entry.is_matched ? "✓" : ""}
+                              <span className="truncate min-w-0">{entry.name}</span>
+                              {entry.is_matched ? (
+                                <i className="fa-solid fa-circle-check text-emerald-600 dark:text-emerald-400 shrink-0" aria-label={t.recurringOccurred ?? "Occurred"} title={t.recurringOccurred ?? "Occurred"} />
+                              ) : entry.is_missed ? (
+                                <i className="fa-solid fa-circle-xmark text-red-600 dark:text-red-400 shrink-0" aria-label={t.recurringMissed ?? "Missed"} title={t.recurringMissed ?? "Missed"} />
+                              ) : null}
                             </button>
                           ))}
                           {entries.length > 3 && (
@@ -494,15 +570,21 @@ export default function RecurringCalendar({
               </p>
               <ul className="space-y-2">
                 {entriesByDate[selectedDate].map((entry) => (
-                  <li key={entry.recurring_transaction_id} className="flex items-center gap-2">
+                  <li key={`${entry.recurring_transaction_id}-${entry.date}`} className="flex items-center gap-2">
+                    {entry.is_matched ? (
+                      <i className="fa-solid fa-circle-check text-emerald-600 dark:text-emerald-400 shrink-0" aria-label={t.recurringOccurred ?? "Occurred"} title={t.recurringOccurred ?? "Occurred"} />
+                    ) : entry.is_missed ? (
+                      <i className="fa-solid fa-circle-xmark text-red-600 dark:text-red-400 shrink-0" aria-label={t.recurringMissed ?? "Missed"} title={t.recurringMissed ?? "Missed"} />
+                    ) : (
+                      <span className="w-4 shrink-0" aria-hidden />
+                    )}
                     <span className="min-w-0 flex-1 truncate">{entry.name}</span>
                     <span className="text-sm text-slate-500 text-right tabular-nums shrink-0 min-w-[6rem]">
                       {entry.expected_amount != null && entry.expected_amount.trim() !== ""
-                        ? formatExpectedAmount(entry.expected_amount, locale)
+                        ? formatExpectedAmount(entry.expected_amount, locale, entry.currency)
                         : entry.nominal_amount != null && entry.nominal_amount.trim() !== ""
-                          ? "~" + formatExpectedAmount(entry.nominal_amount, locale)
+                          ? "~" + formatExpectedAmount(entry.nominal_amount, locale, entry.currency)
                           : t.recurringAmountVaries}
-                      {entry.is_matched ? " ✓" : ""}
                     </span>
                     <button
                       type="button"

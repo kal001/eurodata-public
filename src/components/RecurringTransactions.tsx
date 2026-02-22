@@ -29,6 +29,7 @@ export type RecurringItem = {
   next_expected_date: string | null;
   created_at: string;
   updated_at: string;
+  currency?: string | null;
 };
 
 export type AccountOption = {
@@ -43,6 +44,8 @@ type Props = {
   token: string;
   accounts: AccountOption[];
   locale: string;
+  /** User base currency for calendar summary (converted total) */
+  base_currency?: string | null;
   /** When null and storageMode is cloud, show Phase 8 initial detection offer card */
   initialDetectionRunAt?: string | null;
   storageMode?: "cloud" | "local";
@@ -169,16 +172,21 @@ function formatCountdown(
   return d.toLocaleDateString(locale, { year: "numeric", month: "short", day: "2-digit" });
 }
 
-function formatExpectedAmount(amountStr: string | null, locale: string): string {
+function formatExpectedAmount(amountStr: string | null, locale: string, currency?: string | null): string {
   if (amountStr == null || amountStr === "") return "—";
   const trimmed = amountStr.trim();
   const sign = trimmed.startsWith("+") ? "+" : trimmed.startsWith("-") ? "-" : "";
   const num = parseFloat(trimmed.replace(/^[+-]/, "").trim());
   if (Number.isNaN(num)) return amountStr;
+  const absNum = Math.abs(num);
+  const cur = (currency ?? "EUR").trim().toUpperCase() || "EUR";
   const formatted = new Intl.NumberFormat(locale, {
+    style: "currency",
+    currency: cur,
+    currencyDisplay: "narrowSymbol",
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
-  }).format(Math.abs(num));
+  }).format(absNum);
   return sign + formatted;
 }
 
@@ -187,6 +195,7 @@ export default function RecurringTransactions({
   token,
   accounts,
   locale,
+  base_currency,
   initialDetectionRunAt,
   storageMode,
   onInitialDetectionDone,
@@ -268,17 +277,19 @@ export default function RecurringTransactions({
     setLoading(true);
     try {
       if (selectedAccountId === "all") {
-        const results = await Promise.all(
-          accounts.map(async (acc) => {
-            const res = await api(`/api/accounts/${acc.id}/recurring-transactions`);
-            if (res.ok) {
-              const data = await res.json();
-              return data as RecurringItem[];
-            }
-            return [];
-          })
-        );
-        setList(results.flat());
+        if (accounts.length === 0) {
+          setList([]);
+          return;
+        }
+        const params = new URLSearchParams();
+        accounts.forEach((acc) => params.append("account_ids", String(acc.id)));
+        const res = await api(`/api/recurring-transactions?${params}`);
+        if (res.ok) {
+          const data = await res.json();
+          setList(Array.isArray(data) ? data : []);
+        } else {
+          setList([]);
+        }
       } else {
         const res = await api(`/api/accounts/${selectedAccountId}/recurring-transactions`);
         if (res.ok) {
@@ -679,7 +690,7 @@ export default function RecurringTransactions({
                   </span>
                 )}
                 <div className="text-xs text-slate-500 dark:text-slate-400">
-                  {frequencyLabel(currentReviewItem.frequency)} · {currentReviewItem.expected_amount ?? t.recurringAmountVaries} · {getAccountLabel(currentReviewItem.bank_account_id)}
+                  {frequencyLabel(currentReviewItem.frequency)} · {currentReviewItem.expected_amount != null && currentReviewItem.expected_amount.trim() !== "" ? formatExpectedAmount(currentReviewItem.expected_amount, locale, currentReviewItem.currency) : currentReviewItem.nominal_amount != null && currentReviewItem.nominal_amount.trim() !== "" ? "~" + formatExpectedAmount(currentReviewItem.nominal_amount, locale, currentReviewItem.currency) : t.recurringAmountVaries} · {getAccountLabel(currentReviewItem.bank_account_id)}
                 </div>
               </div>
               <div className="flex flex-wrap gap-2">
@@ -748,6 +759,7 @@ export default function RecurringTransactions({
             if (rec) openEdit(rec);
           }}
           locale={locale}
+          base_currency={base_currency}
           t={{
             filterAccount: t.filterAccount,
             filterAccountAll: t.filterAccountAll,
@@ -761,6 +773,8 @@ export default function RecurringTransactions({
             recurringEdit: t.recurringEdit,
             recurringEmpty: t.recurringEmpty,
             calendarUpcoming: t.calendarUpcoming,
+            recurringOccurred: (t as Record<string, string>).recurringOccurred,
+            recurringMissed: (t as Record<string, string>).recurringMissed,
           }}
         />
       ) : (
@@ -878,7 +892,7 @@ export default function RecurringTransactions({
                   </td>
                   <td className="p-3">{frequencyLabel(rec.frequency)}</td>
                   <td className="p-3">{formatCountdown(rec.next_expected_date, locale, t)}</td>
-                  <td className="p-3">{rec.expected_amount != null && rec.expected_amount.trim() !== "" ? formatExpectedAmount(rec.expected_amount, locale) : rec.nominal_amount != null && rec.nominal_amount.trim() !== "" ? "~" + formatExpectedAmount(rec.nominal_amount, locale) : t.recurringAmountVaries}</td>
+                  <td className="p-3">{rec.expected_amount != null && rec.expected_amount.trim() !== "" ? formatExpectedAmount(rec.expected_amount, locale, rec.currency) : rec.nominal_amount != null && rec.nominal_amount.trim() !== "" ? "~" + formatExpectedAmount(rec.nominal_amount, locale, rec.currency) : t.recurringAmountVaries}</td>
                   <td className="p-3">
                     {(() => {
                       const s = statusIcon(rec.status);

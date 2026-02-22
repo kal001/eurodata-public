@@ -136,7 +136,7 @@ type InsightsData = {
   received_list: ListRow[];
   paid_list?: ListRow[];
   by_category: Array<{ category_id: number | null; category_name: string; total: number }>;
-  totals: { total_received: number; total_paid: number; difference: number };
+  totals: { total_received: number; total_paid: number; difference: number; base_currency?: string };
   balance_history: Array<{ date: string; balance: number }>;
   balance_comparison: Array<{
     month: string;
@@ -144,6 +144,7 @@ type InsightsData = {
     paid: number;
     difference: number;
   }>;
+  base_currency?: string;
 };
 
 const CARD_IDS = ["received", "paid", "byCategory", "totals", "balanceHistory", "balanceComparison"] as const;
@@ -1460,7 +1461,9 @@ export default function Insights({
         <div className="text-center py-12" style={{ color: "var(--text-tertiary)" }}>
           {t.insightsEmpty}
         </div>
-      ) : (
+      ) : (() => {
+        const baseCurrency = insightsData.base_currency ?? insightsData.totals?.base_currency ?? "EUR";
+        return (
         <div className="space-y-4 min-w-0">
           {hoveredRow && (
             <TransactionRowPopup
@@ -1831,7 +1834,7 @@ export default function Insights({
                             type="number"
                             stroke="var(--text-tertiary)"
                             fontSize={12}
-                            tickFormatter={(v) => formatAmount(v, "EUR", locale)}
+                            tickFormatter={(v) => formatAmount(v, baseCurrency, locale)}
                           />
                           <YAxis
                             type="category"
@@ -1859,7 +1862,7 @@ export default function Insights({
                             labelStyle={{ color: "var(--text)" }}
                             itemStyle={{ color: "var(--text)" }}
                             formatter={(value: number, name: string) => [
-                              formatAmount(value, "EUR", locale),
+                              formatAmount(value, baseCurrency, locale),
                               name === "remainingAbs"
                                 ? (t.insightsEstimatedRemaining ?? "Estimated remaining")
                                 : t.insightsAmount,
@@ -1930,7 +1933,7 @@ export default function Insights({
                     {t.insightsTotalReceived}
                   </div>
                   <div className="text-xl font-semibold" style={{ color: "var(--success)" }}>
-                    {formatAmount(insightsData.totals.total_received, "EUR", locale)}
+                    {formatAmount(insightsData.totals.total_received, baseCurrency, locale)}
                   </div>
                 </div>
                 <div
@@ -1941,7 +1944,7 @@ export default function Insights({
                     {t.insightsTotalPaid}
                   </div>
                   <div className="text-xl font-semibold" style={{ color: "var(--error)" }}>
-                    {formatAmount(insightsData.totals.total_paid, "EUR", locale)}
+                    {formatAmount(insightsData.totals.total_paid, baseCurrency, locale)}
                   </div>
                 </div>
                 <div
@@ -1958,7 +1961,7 @@ export default function Insights({
                         insightsData.totals.difference >= 0 ? "var(--success)" : "var(--error)",
                     }}
                   >
-                    {formatAmount(insightsData.totals.difference, "EUR", locale)}
+                    {formatAmount(insightsData.totals.difference, baseCurrency, locale)}
                   </div>
                 </div>
               </div>
@@ -2035,7 +2038,7 @@ export default function Insights({
                           stroke="var(--text-tertiary)"
                           fontSize={12}
                           tick={{ fill: "var(--text-secondary)" }}
-                          tickFormatter={(v) => formatAmount(v, "EUR", locale)}
+                          tickFormatter={(v) => formatAmount(v, baseCurrency, locale)}
                         />
                         <Tooltip
                           contentStyle={{
@@ -2047,7 +2050,7 @@ export default function Insights({
                           labelStyle={{ color: "var(--text)" }}
                           itemStyle={{ color: "var(--text)" }}
                           formatter={(value: number, name: string) => [
-                            formatAmount(value, "EUR", locale),
+                            formatAmount(value, baseCurrency, locale),
                             name === "forecastBalance" ? (t.insightsBalanceForecast ?? "Estimated (EOM)") : t.insightsBalance,
                           ]}
                           labelFormatter={(_, payload) =>
@@ -2128,10 +2131,10 @@ export default function Insights({
                             {formatMonth(d.month, locale)}
                           </td>
                           <td className="py-2 pr-4 text-right" style={{ color: "var(--success)" }}>
-                            {formatAmount(d.received, "EUR", locale)}
+                            {formatAmount(d.received, baseCurrency, locale)}
                           </td>
                           <td className="py-2 pr-4 text-right" style={{ color: "var(--error)" }}>
-                            {formatAmount(d.paid, "EUR", locale)}
+                            {formatAmount(d.paid, baseCurrency, locale)}
                           </td>
                           <td
                             className="py-2 text-right"
@@ -2139,7 +2142,7 @@ export default function Insights({
                               color: d.difference >= 0 ? "var(--success)" : "var(--error)",
                             }}
                           >
-                            {formatAmount(d.difference, "EUR", locale)}
+                            {formatAmount(d.difference, baseCurrency, locale)}
                           </td>
                         </tr>
                       ))}
@@ -2164,10 +2167,10 @@ export default function Insights({
                             </span>
                           </td>
                           <td className="py-2 pr-4 text-right" style={{ color: "var(--success)" }}>
-                            {formatAmount(balanceForecast!.eom_revenue, "EUR", locale)}
+                            {formatAmount(balanceForecast!.eom_revenue, baseCurrency, locale)}
                           </td>
                           <td className="py-2 pr-4 text-right" style={{ color: "var(--error)" }}>
-                            {formatAmount(balanceForecast!.eom_expenses, "EUR", locale)}
+                            {formatAmount(balanceForecast!.eom_expenses, baseCurrency, locale)}
                           </td>
                           <td
                             className="py-2 text-right"
@@ -2175,7 +2178,7 @@ export default function Insights({
                               color: (balanceForecast!.eom_revenue - balanceForecast!.eom_expenses) >= 0 ? "var(--success)" : "var(--error)",
                             }}
                           >
-                            {formatAmount(balanceForecast!.eom_revenue - balanceForecast!.eom_expenses, "EUR", locale)}
+                            {formatAmount(balanceForecast!.eom_revenue - balanceForecast!.eom_expenses, baseCurrency, locale)}
                           </td>
                         </tr>
                       )}
@@ -2184,10 +2187,10 @@ export default function Insights({
                       <tr style={{ borderTop: "2px solid var(--border)", color: "var(--text)", fontWeight: 600 }}>
                         <td className="py-2 pr-4">{t.insightsReceivedListTotal}</td>
                         <td className="py-2 pr-4 text-right" style={{ color: "var(--success)" }}>
-                          {formatAmount(totalReceived, "EUR", locale)}
+                          {formatAmount(totalReceived, baseCurrency, locale)}
                         </td>
                         <td className="py-2 pr-4 text-right" style={{ color: "var(--error)" }}>
-                          {formatAmount(totalPaid, "EUR", locale)}
+                          {formatAmount(totalPaid, baseCurrency, locale)}
                         </td>
                         <td
                           className="py-2 text-right"
@@ -2195,7 +2198,7 @@ export default function Insights({
                             color: totalDifference >= 0 ? "var(--success)" : "var(--error)",
                           }}
                         >
-                          {formatAmount(totalDifference, "EUR", locale)}
+                          {formatAmount(totalDifference, baseCurrency, locale)}
                         </td>
                       </tr>
                     </tfoot>
@@ -2206,7 +2209,8 @@ export default function Insights({
             )}
           </div>
         </div>
-      )}
+        );
+      })()}
     </section>
   );
 }

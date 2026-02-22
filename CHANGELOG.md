@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, and this project adheres to
 Semantic Versioning.
 
+## [2.3.2] - 2026-02-22
+
+- **Exchange rates and currency conversion:** Daily exchange rates are fetched from a configurable API (default: Frankfurter, ECB data) and stored in the database. A Celery task runs at 05:00 UTC to update rates. Insights (Análises) now converts all amounts to the user’s base currency using these rates (transaction date for historical consistency). The Recorrentes calendar summary total is also converted to the user’s base currency when available. Optional env: `EXCHANGE_RATES_API_URL`, `EXCHANGE_RATES_ENABLED`. Authenticated `GET /api/exchange-rates` (optional `rate_date`) allows inspecting stored rates. User base currency remains set in Profile (Perfil).
+
 ## [2.3.1] - 2026-02-21
 
 - **Enable Banking working:** Bank link flow via Enable Banking now works correctly. Returning from the bank no longer logs the user out: Auth0 no longer treats the bank callback URL as an Auth0 callback (`skipRedirectCallback` on `/callback`), so the session is preserved and the link completes without the 20s wait or "Session expired" screen.
