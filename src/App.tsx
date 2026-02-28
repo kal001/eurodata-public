@@ -5455,12 +5455,12 @@ function App() {
               bugReportUrl={buildIssueUrl("bug")}
               featureRequestUrl={buildIssueUrl("feature")}
               t={{
-                helpTitle: t.helpTitle,
+                helpPageTitle: t.helpPageTitle,
                 helpBack: t.helpBack,
                 helpIntro: t.helpIntro,
                 helpGettingStartedTitle: t.helpGettingStartedTitle,
                 helpGettingStartedContent: t.helpGettingStartedContent,
-                helpTransactionsTitle: t.helpTransactionsTitle,
+                helpPageTransactionsTitle: t.helpPageTransactionsTitle,
                 helpTransactionsContent: t.helpTransactionsContent,
                 helpSubscriptionTitle: t.helpSubscriptionTitle,
                 helpSubscriptionContent: t.helpSubscriptionContent,

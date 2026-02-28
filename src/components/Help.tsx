@@ -1,10 +1,10 @@
 export type HelpTranslations = {
-  helpTitle: string;
+  helpPageTitle: string;
   helpBack: string;
   helpIntro: string;
   helpGettingStartedTitle: string;
   helpGettingStartedContent: string;
-  helpTransactionsTitle: string;
+  helpPageTransactionsTitle: string;
   helpTransactionsContent: string;
   helpSubscriptionTitle: string;
   helpSubscriptionContent: string;
@@ -49,7 +49,7 @@ function Section({
 
 export default function Help({ t, onBack, bugReportUrl, featureRequestUrl }: Props) {
   return (
-    <article className="pt-24 pb-32" aria-label={t.helpTitle}>
+    <article className="pt-24 pb-32" aria-label={t.helpPageTitle}>
       <div className="mx-auto max-w-3xl px-6">
         <button
           type="button"
@@ -66,7 +66,7 @@ export default function Help({ t, onBack, bugReportUrl, featureRequestUrl }: Pro
             className="text-3xl font-bold tracking-tight md:text-4xl"
             style={{ color: "var(--text)" }}
           >
-            {t.helpTitle}
+            {t.helpPageTitle}
           </h1>
           <p
             className="mt-2 text-sm leading-relaxed"
@@ -82,7 +82,7 @@ export default function Help({ t, onBack, bugReportUrl, featureRequestUrl }: Pro
           ))}
         </Section>
 
-        <Section title={t.helpTransactionsTitle}>
+        <Section title={t.helpPageTransactionsTitle}>
           {t.helpTransactionsContent.split("\n\n").map((para, i) => (
             <p key={i}>{para}</p>
           ))}
