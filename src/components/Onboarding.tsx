@@ -60,6 +60,8 @@ type Props = {
   showBalances?: boolean;
   hasSubscriptionAccess?: boolean;
   onSubscriptionRequired?: () => void;
+  onAccountLimitReached?: () => void;
+  isOverAutoLimit?: boolean;
   t: {
     onboardingTitle: string;
     onboardingBody: string;
@@ -81,6 +83,7 @@ type Props = {
     actionReconnectBank: string;
     actionReauthRequired: string;
     actionFetchTransactions: string;
+    automaticAccountsOverLimitTooltip?: string;
     actionDeleteAccount: string;
     accountTransactionAlerts: string;
     alertTemplateDay: string;
@@ -154,7 +157,7 @@ const countries = [
   { code: "IE", names: { en: "Ireland", pt: "Irlanda", es: "Irlanda", fr: "Irlande" } },
 ];
 
-export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, token, showBalances = true, hasSubscriptionAccess = true, onSubscriptionRequired }: Props) {
+export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, token, showBalances = true, hasSubscriptionAccess = true, onSubscriptionRequired, onAccountLimitReached, isOverAutoLimit = false }: Props) {
   const [country, setCountry] = useState("PT");
   const [banks, setBanks] = useState<Bank[]>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -163,6 +166,15 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
   const [banksLoading, setBanksLoading] = useState(false);
   const [fetchInProgressConnectionId, setFetchInProgressConnectionId] = useState<number | null>(null);
   const [isRedirecting, setIsRedirecting] = useState(false);
+
+  // When the browser restores this page from BFCache (user pressed Back after
+  // being redirected to the bank provider), isRedirecting is still true.
+  // Reset it so reconnect buttons are usable again.
+  useEffect(() => {
+    const handlePageShow = () => setIsRedirecting(false);
+    window.addEventListener("pageshow", handlePageShow);
+    return () => window.removeEventListener("pageshow", handlePageShow);
+  }, []);
   const [alertsModal, setAlertsModal] = useState<{
     open: boolean;
     accountId: number | null;
@@ -439,6 +451,7 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
       }
       await fetchAccounts();
       window.localStorage.removeItem("pf_bank_reference");
+      sessionStorage.removeItem("pf_reconnect_pending");
       params.delete("reference");
       params.delete("ref");
       params.delete("state");
@@ -476,8 +489,13 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
         setIsRedirecting(true);
         window.location.href = data.link;
       }
-    } else if (response.status === 403 && onSubscriptionRequired) {
-      onSubscriptionRequired();
+    } else if (response.status === 403) {
+      const errData = await response.json().catch(() => ({}));
+      if (errData?.detail === "automatic_account_limit_reached" && onAccountLimitReached) {
+        onAccountLimitReached();
+      } else if (onSubscriptionRequired) {
+        onSubscriptionRequired();
+      }
     } else if (response.status === 429) {
       setToast({ text: t.gocardlessRateLimitExceeded, type: "warning" });
     }
@@ -552,6 +570,20 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
     if (response.ok) {
       const data = await response.json();
       if (data.link) {
+        try {
+          sessionStorage.setItem(
+            "pf_reconnect_pending",
+            JSON.stringify({
+              connection_id: data.connection_id ?? account.bank_connection_id,
+              prev_reference: data.prev_reference ?? null,
+              prev_requisition_id: data.prev_requisition_id ?? null,
+              prev_status: data.prev_status ?? null,
+              prev_access_expired: data.prev_access_expired ?? null,
+            })
+          );
+        } catch {
+          // ignore
+        }
         setIsRedirecting(true);
         window.location.href = data.link;
       }
@@ -608,7 +640,7 @@ export default function Onboarding({ onComplete, onFetchComplete, t, apiBase, to
             pollIntervalRef.current = null;
           }
           setFetchInProgressConnectionId(null);
-          setToast({ text: t.gocardlessRateLimitExceeded, type: "warning" });
+          setToast({ text: data.result?.message || t.gocardlessRateLimitExceeded, type: "warning" });
         }
       };
 
@@ -1692,12 +1724,12 @@ title={t.importStatementTitle ?? "Import statement (PDF or Excel)"}
                         <i className={account.needs_reauth ? "fa-solid fa-plug-circle-exclamation" : "fa-solid fa-plug"}></i>
                       </button>
                     )}
+                    <span title={!isManualAccount(account) && isOverAutoLimit ? (t.automaticAccountsOverLimitTooltip ?? t.actionFetchTransactions) : t.actionFetchTransactions}>
                     <button
-                      className="icon-button shrink-0 disabled:opacity-50 disabled:pointer-events-none"
+                      className="icon-button shrink-0 disabled:opacity-50"
                       type="button"
-                      title={t.actionFetchTransactions}
                       aria-label={t.actionFetchTransactions}
-                      disabled={!isManualAccount(account) ? fetchInProgressConnectionId !== null : false}
+                      disabled={!isManualAccount(account) ? (fetchInProgressConnectionId !== null || isOverAutoLimit) : false}
                       onClick={() => {
                         if (isManualAccount(account)) {
                           setPdfImportPreSelectAccountId(account.id);
@@ -1713,8 +1745,9 @@ title={t.importStatementTitle ?? "Import statement (PDF or Excel)"}
                         }
                       }}
                     >
-                      <i className={isManualAccount(account) ? "fa-solid fa-file-import" : "fa-solid fa-rotate"}></i>
+                      <i className={`fa-solid fa-rotate ${!isManualAccount(account) && fetchInProgressConnectionId === account.bank_connection_id ? "fa-spin" : ""}`} aria-hidden />
                     </button>
+                    </span>
                     <button
                       className="icon-button shrink-0 text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300"
                       type="button"

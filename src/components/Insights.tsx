@@ -31,6 +31,8 @@ export type InsightsTranslation = {
   insightsAllCategories: string;
   insightsNoCategory: string;
   insightsNoTag: string;
+  filterCategoryAll: string;
+  filterCategoryNone: string;
   insightsSaveConfig: string;
   insightsLoadConfig: string;
   insightsSetDefault: string;
@@ -75,9 +77,6 @@ export type InsightsTranslation = {
   modalCancel: string;
   modalConfirm: string;
 };
-
-const VITE_DEBUG_RAW = import.meta.env.VITE_DEBUG;
-const DEBUG_EOM_ESTIMATE = VITE_DEBUG_RAW === "1" || VITE_DEBUG_RAW === "true";
 
 type BalanceForecastResponse = {
   current_balance: number;
@@ -623,28 +622,6 @@ export default function Insights({
             if (forecastRes.ok) {
               const forecastData = await forecastRes.json();
               setBalanceForecast(forecastData);
-              if (DEBUG_EOM_ESTIMATE) {
-                console.log("EOM estimate (expand to inspect)", {
-                  summary: {
-                    current_balance: forecastData.current_balance,
-                    eom_balance: forecastData.eom_balance,
-                    eom_revenue: forecastData.eom_revenue,
-                    eom_expenses: forecastData.eom_expenses,
-                  },
-                  calculation_breakdown: forecastData.calculation_breakdown ?? null,
-                  by_category_estimate: forecastData.by_category_estimate ?? [],
-                  recurring_until_eom: forecastData.recurring_until_eom ?? [],
-                  balance_forecast_daily: forecastData.balance_forecast ?? [],
-                });
-              } else {
-                console.debug("Balance forecast", {
-                  eom_balance: forecastData.eom_balance,
-                  eom_revenue: forecastData.eom_revenue,
-                  eom_expenses: forecastData.eom_expenses,
-                  balance_forecast_count: forecastData.balance_forecast?.length,
-                  by_category_count: forecastData.by_category_estimate?.length,
-                });
-              }
             } else {
               setBalanceForecast(null);
             }
@@ -1202,6 +1179,32 @@ export default function Insights({
               className="absolute top-full left-0 mt-1 py-2 max-h-48 overflow-y-auto min-w-[200px] rounded-md shadow-lg z-20 border"
               style={{ background: "var(--surface)", borderColor: "var(--border)" }}
             >
+              <div className="flex gap-1 px-2 pb-2 mb-2 border-b" style={{ borderColor: "var(--border)" }}>
+                <button
+                  type="button"
+                  className="px-2 py-1 text-xs rounded"
+                  style={{ color: "var(--primary)", background: "var(--primary-50)" }}
+                  onClick={() => {
+                    setCategoryIds(null);
+                    setIncludeUncategorized(true);
+                    setCategoriesDropdownOpen(false);
+                  }}
+                >
+                  {t.filterCategoryAll}
+                </button>
+                <button
+                  type="button"
+                  className="px-2 py-1 text-xs rounded"
+                  style={{ color: "var(--text-secondary)", background: "var(--surface-hover)" }}
+                  onClick={() => {
+                    setCategoryIds([]);
+                    setIncludeUncategorized(true);
+                    setCategoriesDropdownOpen(false);
+                  }}
+                >
+                  {t.filterCategoryNone}
+                </button>
+              </div>
               <label
                 className="flex items-center gap-2 px-3 py-1.5 text-sm block hover:bg-opacity-80"
                 style={{ background: "transparent" }}

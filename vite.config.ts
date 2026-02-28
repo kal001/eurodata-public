@@ -1,5 +1,6 @@
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
+import { visualizer } from "rollup-plugin-visualizer";
 import path from "path";
 import fs from "fs";
 
@@ -18,6 +19,11 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: [
       react(),
+      visualizer({
+        open: false,
+        filename: "dist/stats.html",
+        gzipSize: true,
+      }),
       {
         name: "pwa-manifest-and-html",
         transformIndexHtml(html) {
@@ -54,6 +60,9 @@ export default defineConfig(({ mode }) => {
     ],
     server: {
       allowedHosts: true, // allow ngrok and other tunnel hosts (URL changes each run)
+      // Ignore source maps for deps (e.g. react.js.map "No sources") to avoid console noise
+      sourcemapIgnoreList: (sourcePath) =>
+        sourcePath.includes("node_modules") || sourcePath.includes(".vite/deps"),
       proxy: {
         "/api": prefix
           ? { target: apiTarget, rewrite: (path) => `/${prefix}${path}` }

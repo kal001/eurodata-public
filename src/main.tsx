@@ -4,7 +4,8 @@ import { Auth0Provider } from "@auth0/auth0-react";
 import App from "./App";
 import "./styles.css";
 
-if ("serviceWorker" in navigator) {
+// Only register service worker in production (avoids dev cache serving old bundles)
+if ("serviceWorker" in navigator && !import.meta.env.DEV) {
   window.addEventListener("load", () => {
     navigator.serviceWorker.register("/service-worker.js");
   });

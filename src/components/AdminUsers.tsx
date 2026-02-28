@@ -1,5 +1,23 @@
 import { useEffect, useState } from "react";
 
+type BroadcastStep = {
+  id: string;
+  label: string;
+  status: "active" | "done" | "error";
+  detail?: string;
+};
+
+const LANG_NAMES: Record<string, string> = {
+  en: "English",
+  pt: "Português",
+  es: "Español",
+  fr: "Français",
+  de: "Deutsch",
+  it: "Italiano",
+  nl: "Nederlands",
+  pl: "Polski",
+};
+
 type UserEmail = {
   id: number;
   email: string;
@@ -53,6 +71,26 @@ type Translations = {
   adminEditTelegram: string;
   adminTelegramModalTitle: string;
   adminTelegramSave: string;
+  adminResendSync: string;
+  adminResendSyncing: string;
+  adminResendSyncSuccess: string;
+  adminResendSyncError: string;
+  adminBroadcast: string;
+  adminBroadcastTitle: string;
+  adminBroadcastDesc: string;
+  adminBroadcastSelectTemplate: string;
+  adminBroadcastSend: string;
+  adminBroadcastSending: string;
+  adminBroadcastSuccess: string;
+  adminBroadcastError: string;
+  adminBroadcastLoadingTemplates: string;
+  adminBroadcastNoTemplates: string;
+  adminBroadcastStepTranslating: string;
+  adminBroadcastStepSending: string;
+  adminBroadcastStepCleanup: string;
+  adminBroadcastDetailSent: string;
+  adminBroadcastDetailErrors: string;
+  adminBroadcastDetailDeleted: string;
 };
 
 type Props = {
@@ -80,6 +118,13 @@ export default function AdminUsers({ token, apiBase, t, showToast }: Props) {
   const [emailToAdd, setEmailToAdd] = useState<Record<number, string>>({});
   const [editTelegramUser, setEditTelegramUser] = useState<User | null>(null);
   const [editTelegramValue, setEditTelegramValue] = useState("");
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [showBroadcast, setShowBroadcast] = useState(false);
+  const [templates, setTemplates] = useState<{ id: string; name: string; alias: string }[]>([]);
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [isSending, setIsSending] = useState(false);
+  const [broadcastSteps, setBroadcastSteps] = useState<BroadcastStep[]>([]);
 
   const headers = {
     Authorization: `Bearer ${token}`,
@@ -111,6 +156,17 @@ export default function AdminUsers({ token, apiBase, t, showToast }: Props) {
   useEffect(() => {
     loadUsers();
   }, [page, pageSize, search, sortBy, sortDir]);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (showBroadcast && !isSending) { setShowBroadcast(false); return; }
+      if (editTelegramUser) { setEditTelegramUser(null); setEditTelegramValue(""); setErrorMessage(""); return; }
+      if (confirmDelete) { setConfirmDelete(null); }
+    };
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [showBroadcast, isSending, editTelegramUser, confirmDelete]);
 
   const createUser = async () => {
     const response = await fetch(`${apiBase}/api/admin/users`, {
@@ -211,6 +267,153 @@ export default function AdminUsers({ token, apiBase, t, showToast }: Props) {
     }
   };
 
+  const syncToResend = async () => {
+    setIsSyncing(true);
+    try {
+      const response = await fetch(`${apiBase}/api/admin/resend/sync`, {
+        method: "POST",
+        headers,
+      });
+      if (response.ok) {
+        const data = await response.json();
+        const message = data.skipped
+          ? t.adminResendSyncError
+          : `${t.adminResendSyncSuccess} (${data.synced})`;
+        if (showToast) showToast(message, data.skipped ? "warning" : "success");
+      } else {
+        if (showToast) showToast(t.adminResendSyncError, "error");
+      }
+    } catch {
+      if (showToast) showToast(t.adminResendSyncError, "error");
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const openBroadcastModal = async () => {
+    setShowBroadcast(true);
+    setSelectedTemplateId("");
+    setBroadcastSteps([]);
+    setLoadingTemplates(true);
+    try {
+      const response = await fetch(`${apiBase}/api/admin/resend/templates`, { headers });
+      if (response.ok) {
+        const data = await response.json();
+        setTemplates(data.templates ?? []);
+      } else {
+        setTemplates([]);
+      }
+    } catch {
+      setTemplates([]);
+    } finally {
+      setLoadingTemplates(false);
+    }
+  };
+
+  const sendBroadcast = async () => {
+    if (!selectedTemplateId) return;
+    setIsSending(true);
+    setBroadcastSteps([
+      { id: "translating", label: t.adminBroadcastStepTranslating, status: "active" },
+    ]);
+
+    const upsertStep = (step: BroadcastStep) => {
+      setBroadcastSteps((prev) => {
+        const idx = prev.findIndex((s) => s.id === step.id);
+        if (idx === -1) return [...prev, step];
+        const next = [...prev];
+        next[idx] = step;
+        return next;
+      });
+    };
+
+    try {
+      const response = await fetch(`${apiBase}/api/admin/resend/broadcast`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({ template_id: selectedTemplateId }),
+      });
+
+      if (!response.body) {
+        if (showToast) showToast(t.adminBroadcastError, "error");
+        setBroadcastSteps((prev) => prev.map((s) => ({ ...s, status: "error" as const })));
+        return;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+
+        // Split on double-newline (SSE event boundary).
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+
+        for (const chunk of parts) {
+          for (const line of chunk.split("\n")) {
+            if (!line.startsWith("data: ")) continue;
+            try {
+              const event = JSON.parse(line.slice(6));
+
+              if (event.type === "step") {
+                const buildLabel = (): string => {
+                  if (event.id === "translating") return t.adminBroadcastStepTranslating;
+                  if (event.id.startsWith("sending_")) {
+                    const name = LANG_NAMES[event.lang as string] ?? (event.lang as string).toUpperCase();
+                    return `${t.adminBroadcastStepSending} ${name}${event.count != null ? ` (${event.count})` : ""}`;
+                  }
+                  if (event.id === "cleanup") return t.adminBroadcastStepCleanup;
+                  return event.id as string;
+                };
+                const buildDetail = (): string | undefined => {
+                  if (event.status === "done" && event.sent != null) {
+                    return event.errors
+                      ? `${event.sent} ${t.adminBroadcastDetailSent}, ${event.errors} ${t.adminBroadcastDetailErrors}`
+                      : `${event.sent} ${t.adminBroadcastDetailSent}`;
+                  }
+                  if (event.status === "done" && event.deleted != null) {
+                    return `${event.deleted} ${t.adminBroadcastDetailDeleted}`;
+                  }
+                  return undefined;
+                };
+                upsertStep({
+                  id: event.id as string,
+                  label: buildLabel(),
+                  status: event.status as BroadcastStep["status"],
+                  detail: buildDetail(),
+                });
+              } else if (event.type === "done") {
+                setIsSending(false);
+                if (showToast)
+                  showToast(`${t.adminBroadcastSuccess} (${event.sent})`, "success");
+              } else if (event.type === "error") {
+                setBroadcastSteps((prev) =>
+                  prev.map((s) =>
+                    s.status === "active" ? { ...s, status: "error" as const } : s
+                  )
+                );
+                if (showToast) showToast(t.adminBroadcastError, "error");
+              }
+            } catch {
+              // Ignore malformed SSE lines.
+            }
+          }
+        }
+      }
+    } catch {
+      setBroadcastSteps((prev) =>
+        prev.map((s) => (s.status === "active" ? { ...s, status: "error" as const } : s))
+      );
+      if (showToast) showToast(t.adminBroadcastError, "error");
+    } finally {
+      setIsSending(false);
+    }
+  };
+
   const sendInvite = async (userId: number) => {
     const response = await fetch(`${apiBase}/api/admin/users/${userId}/invite`, {
       method: "POST",
@@ -235,6 +438,27 @@ export default function AdminUsers({ token, apiBase, t, showToast }: Props) {
     <section className="mx-auto max-w-6xl px-6 py-12">
       <div className="mb-8 flex items-center justify-between">
         <h2 className="text-2xl font-semibold">{t.adminTitle}</h2>
+        <div className="flex items-center gap-2">
+          <button
+            className="icon-button"
+            type="button"
+            onClick={openBroadcastModal}
+            title={t.adminBroadcast}
+            aria-label={t.adminBroadcast}
+          >
+            <i className="fa-solid fa-envelope"></i>
+          </button>
+          <button
+            className="icon-button"
+            type="button"
+            onClick={syncToResend}
+            disabled={isSyncing}
+            title={isSyncing ? t.adminResendSyncing : t.adminResendSync}
+            aria-label={isSyncing ? t.adminResendSyncing : t.adminResendSync}
+          >
+            <i className={`fa-solid ${isSyncing ? "fa-spinner fa-spin" : "fa-rotate"}`}></i>
+          </button>
+        </div>
       </div>
 
       <div className="card mb-6">
@@ -571,6 +795,112 @@ export default function AdminUsers({ token, apiBase, t, showToast }: Props) {
               >
                 <i className="fa-solid fa-check" />
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {showBroadcast ? (
+        <div className="modal-overlay">
+          <div className="modal-card" style={{ maxWidth: "560px", width: "100%" }}>
+            <h3 className="card-title">{t.adminBroadcastTitle}</h3>
+            {/* Hide the description once progress steps are visible */}
+            {broadcastSteps.length === 0 && (
+              <p className="card-description text-sm" style={{ color: "var(--text-secondary)" }}>
+                {t.adminBroadcastDesc}
+              </p>
+            )}
+
+            {broadcastSteps.length > 0 ? (
+              /* ── Progress list (shown while sending or after completion) ── */
+              <ul className="mt-4 space-y-3">
+                {broadcastSteps.map((step) => (
+                  <li key={step.id} className="flex items-start gap-3 text-sm">
+                    <span className="mt-0.5 w-4 shrink-0 text-center">
+                      {step.status === "active" && (
+                        <i className="fa-solid fa-spinner fa-spin" style={{ color: "var(--primary)" }} />
+                      )}
+                      {step.status === "done" && (
+                        <i className="fa-solid fa-circle-check" style={{ color: "#22c55e" }} />
+                      )}
+                      {step.status === "error" && (
+                        <i className="fa-solid fa-circle-xmark" style={{ color: "var(--error)" }} />
+                      )}
+                    </span>
+                    <span>
+                      <span style={{ color: "var(--text)" }}>{step.label}</span>
+                      {step.detail && (
+                        <span className="ml-2 text-xs" style={{ color: "var(--text-secondary)" }}>
+                          {step.detail}
+                        </span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            ) : loadingTemplates ? (
+              <p className="mt-4 text-sm" style={{ color: "var(--text-tertiary)" }}>
+                <i className="fa-solid fa-spinner fa-spin mr-2"></i>
+                {t.adminBroadcastLoadingTemplates}
+              </p>
+            ) : templates.length === 0 ? (
+              <p className="mt-4 text-sm" style={{ color: "var(--text-tertiary)" }}>
+                {t.adminBroadcastNoTemplates}
+              </p>
+            ) : (
+              /* ── Template selector ── */
+              <div className="mt-4">
+                <select
+                  className="input w-full"
+                  value={selectedTemplateId}
+                  onChange={(e) => setSelectedTemplateId(e.target.value)}
+                >
+                  <option value="">{t.adminBroadcastSelectTemplate}</option>
+                  {templates.map((tpl) => (
+                    <option key={tpl.id} value={tpl.id}>
+                      {tpl.name || tpl.alias || tpl.id}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            <div className="mt-6 flex justify-end gap-2">
+              {/* Close — disabled while sending to prevent abandoning mid-flight */}
+              <button
+                type="button"
+                className="p-2 rounded-md border transition-colors"
+                style={{
+                  background: "var(--surface-hover)",
+                  borderColor: "var(--border)",
+                  color: "var(--text)",
+                }}
+                title={t.modalCancel}
+                aria-label={t.modalCancel}
+                disabled={isSending}
+                onClick={() => setShowBroadcast(false)}
+              >
+                <i className="fa-solid fa-xmark" />
+              </button>
+              {/* Send button — hidden once steps have started */}
+              {broadcastSteps.length === 0 && (
+                <button
+                  type="button"
+                  className="p-2 rounded-md border transition-colors"
+                  style={{
+                    background: "var(--primary)",
+                    borderColor: "var(--primary)",
+                    color: "white",
+                    opacity: loadingTemplates || !selectedTemplateId ? 0.5 : 1,
+                  }}
+                  title={t.adminBroadcastSend}
+                  aria-label={t.adminBroadcastSend}
+                  disabled={loadingTemplates || !selectedTemplateId}
+                  onClick={sendBroadcast}
+                >
+                  <i className="fa-solid fa-paper-plane" />
+                </button>
+              )}
             </div>
           </div>
         </div>

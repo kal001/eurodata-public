@@ -14,6 +14,8 @@ const LazyAudit = lazy(() => import("./components/Audit"));
 const LazyInsights = lazy(() => import("./components/Insights"));
 const LazyOnboarding = lazy(() => import("./components/Onboarding"));
 const LazyPrivacyPolicy = lazy(() => import("./components/PrivacyPolicy"));
+const LazyAboutUs = lazy(() => import("./components/AboutUs"));
+const LazyTermsOfService = lazy(() => import("./components/TermsOfService"));
 const LazyRecurringTransactions = lazy(() => import("./components/RecurringTransactions"));
 const LazySettings = lazy(() => import("./components/Settings"));
 import OnboardingWizard from "./components/OnboardingWizard";
@@ -231,7 +233,7 @@ function App() {
   const [signupRequestSuccess, setSignupRequestSuccess] = useState(false);
   const [signupRequestError, setSignupRequestError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<
-    "profile" | "users" | "settings" | "audit" | "adminDashboard" | "home" | "transactions" | "accounts" | "insights" | "recurring" | "privacy"
+    "profile" | "users" | "settings" | "audit" | "adminDashboard" | "home" | "transactions" | "accounts" | "insights" | "recurring" | "privacy" | "about" | "terms"
   >("home");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showToTopButton, setShowToTopButton] = useState(false);
@@ -282,6 +284,9 @@ function App() {
     subscription_status?: string | null;
     subscription_current_period_end?: string | null;
     subscription_cancel_at_period_end?: boolean;
+    allowed_automatic_accounts?: number;
+    current_automatic_accounts?: number;
+    extra_automatic_accounts?: number;
     weekly_emails_enabled?: boolean;
     storage_mode?: "cloud" | "local";
     recurring_initial_detection_run_at?: string | null;
@@ -404,6 +409,23 @@ function App() {
   const [subscriptionCheckoutLoading, setSubscriptionCheckoutLoading] = useState(false);
   const [subscriptionPortalLoading, setSubscriptionPortalLoading] = useState(false);
   const [subscriptionRefreshLoading, setSubscriptionRefreshLoading] = useState(false);
+  const [accountLimitModalOpen, setAccountLimitModalOpen] = useState(false);
+  const [accountSlotLoading, setAccountSlotLoading] = useState(false);
+  const [removeSlotModalOpen, setRemoveSlotModalOpen] = useState(false);
+  const [removeSlotLoading, setRemoveSlotLoading] = useState(false);
+  const [extraAccountPrice, setExtraAccountPrice] = useState<{ unit_amount: number; currency: string } | null>(null);
+  const [subscriptionMonthlyTotal, setSubscriptionMonthlyTotal] = useState<{ unit_amount: number; currency: string } | null>(null);
+  const formattedSlotPrice = extraAccountPrice
+    ? new Intl.NumberFormat(language.code || "en", { style: "currency", currency: extraAccountPrice.currency, minimumFractionDigits: 2 }).format(extraAccountPrice.unit_amount / 100)
+    : null;
+  const formattedMonthlyTotal = subscriptionMonthlyTotal
+    ? new Intl.NumberFormat(language.code || "en", { style: "currency", currency: subscriptionMonthlyTotal.currency, minimumFractionDigits: 2 }).format(subscriptionMonthlyTotal.unit_amount / 100)
+    : null;
+  // True when the user has more connected automatic accounts than their subscription allows.
+  // Fetch and balance buttons are disabled in this state to reflect the backend gate.
+  const isOverAutoLimit =
+    (profile?.allowed_automatic_accounts ?? 0) > 0 &&
+    (profile?.current_automatic_accounts ?? 0) > (profile?.allowed_automatic_accounts ?? 0);
   const [authorizedUsers, setAuthorizedUsers] = useState<{
     pending: { email: string; created_at: string }[];
     authorized: { user_id: number; display_name: string | null; email: string; last_login_at: string | null }[];
@@ -580,7 +602,21 @@ function App() {
   const [transactionsTagIds, setTransactionsTagIds] = useState<number[] | null>(null);
   const [transactionsIncludeUncategorized, setTransactionsIncludeUncategorized] = useState(true);
   const [transactionsIncludeUntagged, setTransactionsIncludeUntagged] = useState(true);
-  const [transactionsAccountFilter, setTransactionsAccountFilter] = useState<number[]>([]);
+  const [transactionsAccountFilter, setTransactionsAccountFilter] = useState<number[]>(() => {
+    try {
+      const raw = window.localStorage.getItem("pf_transactions_account_filter");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const ids = parsed.map((x: unknown) => Number(x)).filter((n) => !Number.isNaN(n) && n > 0);
+          if (ids.length > 0) return ids;
+        }
+      }
+    } catch {
+      // ignore
+    }
+    return [];
+  });
   const [transactionsNewOnly, setTransactionsNewOnly] = useState(false);
   const [transactionsCategoriesDropdownOpen, setTransactionsCategoriesDropdownOpen] = useState(false);
   const [transactionsTagsDropdownOpen, setTransactionsTagsDropdownOpen] = useState(false);
@@ -593,24 +629,120 @@ function App() {
     description?: string | null;
     comment: string;
   } | null>(null);
+  const [transactionsSelectMode, setTransactionsSelectMode] = useState(false);
+  const [selectedTransactionIds, setSelectedTransactionIds] = useState<Set<number>>(new Set());
+  const [transactionBulkDeleteConfirm, setTransactionBulkDeleteConfirm] = useState<{ ids: number[] } | null>(null);
+  const [transactionBulkDeleteSubmitting, setTransactionBulkDeleteSubmitting] = useState(false);
   const [helpModalContext, setHelpModalContext] = useState<HelpContextId | null>(null);
   const transactionsCategoriesDropdownRef = useRef<HTMLDivElement>(null);
   const transactionsTagsDropdownRef = useRef<HTMLDivElement>(null);
   const [authError, setAuthError] = useState<string | null>(null);
   const [accessDeniedFromAuth0, setAccessDeniedFromAuth0] = useState(false);
+  const [pendingCancelReconnect, setPendingCancelReconnect] = useState<{
+    connection_id: number;
+    prev_reference: string | null;
+    prev_requisition_id: string | null;
+    prev_status: string | null;
+    prev_access_expired: boolean | null;
+  } | null>(null);
+  const [pendingBankSetupCancel, setPendingBankSetupCancel] = useState(false);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get("error") === "access_denied") {
-      setAccessDeniedFromAuth0(true);
       params.delete("error");
       params.delete("error_description");
       params.delete("state");
       const query = params.toString();
       const newUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
       window.history.replaceState({}, "", newUrl);
+
+      const storedReconnect = sessionStorage.getItem("pf_reconnect_pending");
+      if (storedReconnect) {
+        try {
+          const reconnectData = JSON.parse(storedReconnect);
+          sessionStorage.removeItem("pf_reconnect_pending");
+          setPendingCancelReconnect(reconnectData);
+        } catch {
+          setAccessDeniedFromAuth0(true);
+        }
+      } else if (window.localStorage.getItem("pf_bank_reference")) {
+        window.localStorage.removeItem("pf_bank_reference");
+        setPendingBankSetupCancel(true);
+      } else {
+        setAccessDeniedFromAuth0(true);
+      }
+      return;
     }
+
   }, []);
+
+  // Detect browser Back-button after reconnect redirect.
+  // useEffect([], []) does NOT run on BFCache restore — the page is returned
+  // from memory as-is and the component never remounts. The `pageshow` event
+  // fires on BOTH initial load AND BFCache restore, making it the correct hook.
+  useEffect(() => {
+    const handlePageShow = () => {
+      const params = new URLSearchParams(window.location.search);
+      // Skip if URL already indicates an active flow handled elsewhere.
+      const hasActiveFlow =
+        params.get("error") === "access_denied" ||
+        params.get("reference") != null ||
+        params.get("ref") != null ||
+        window.location.pathname === "/callback";
+      if (hasActiveFlow) return;
+
+      const stored = sessionStorage.getItem("pf_reconnect_pending");
+      if (!stored) return;
+      try {
+        const reconnectData = JSON.parse(stored);
+        sessionStorage.removeItem("pf_reconnect_pending");
+        setPendingCancelReconnect(reconnectData);
+      } catch {
+        sessionStorage.removeItem("pf_reconnect_pending");
+      }
+    };
+
+    window.addEventListener("pageshow", handlePageShow);
+    return () => window.removeEventListener("pageshow", handlePageShow);
+  }, []);
+
+  useEffect(() => {
+    if (!pendingCancelReconnect || !apiToken) return;
+    const { connection_id, ...prevData } = pendingCancelReconnect;
+    fetch(`${apiBase}/api/banks/connections/${connection_id}/cancel-reconnect`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify(prevData),
+    })
+      .catch(() => {})
+      .finally(() => {
+        setPendingCancelReconnect(null);
+        // Re-fetch accounts so the restored connection (back to "LN" status)
+        // appears in the list — the initial fetch on mount ran before
+        // cancel-reconnect completed, so accounts would otherwise stay hidden.
+        fetch(`${apiBase}/api/accounts?_t=${Date.now()}`, {
+          headers: { Authorization: `Bearer ${apiToken}` },
+          cache: "no-store",
+        })
+          .then((r) => (r.ok ? r.json() : null))
+          .then((data) => { if (data) setBankAccounts(data); })
+          .catch(() => {})
+          .finally(() => {
+            setActiveSection("accounts");
+            showToast(t.reconnectCancelledMessage, "warning");
+          });
+      });
+  }, [pendingCancelReconnect, apiToken]);
+
+  useEffect(() => {
+    if (!pendingBankSetupCancel || auth0Loading) return;
+    setPendingBankSetupCancel(false);
+    if (isAuthenticated) {
+      setActiveSection("accounts");
+    }
+    showToast(t.bankSetupCancelledMessage, "warning");
+  }, [pendingBankSetupCancel, auth0Loading, isAuthenticated]);
 
   // When returning from Stripe checkout (?subscription=success or ?subscription=cancel), open profile on subscription tab
   useEffect(() => {
@@ -717,6 +849,7 @@ function App() {
 
   const PERSISTED_SECTIONS = ["transactions", "accounts", "insights", "recurring"] as const;
   const ACTIVE_SECTION_KEY = "pf_active_section";
+  const TRANSACTIONS_ACCOUNT_FILTER_KEY = "pf_transactions_account_filter";
 
   // Restore persisted section when authenticated; otherwise default to transactions
   useEffect(() => {
@@ -746,6 +879,10 @@ function App() {
   useEffect(() => {
     if (window.location.pathname === "/privacy") {
       setActiveSection("privacy");
+    } else if (window.location.pathname === "/about") {
+      setActiveSection("about");
+    } else if (window.location.pathname === "/terms") {
+      setActiveSection("terms");
     }
   }, []);
 
@@ -753,6 +890,10 @@ function App() {
     const onPopState = () => {
       if (window.location.pathname === "/privacy") {
         setActiveSection("privacy");
+      } else if (window.location.pathname === "/about") {
+        setActiveSection("about");
+      } else if (window.location.pathname === "/terms") {
+        setActiveSection("terms");
       } else if (window.location.pathname === "/" || window.location.pathname === "") {
         setActiveSection(isAuthenticated ? "transactions" : "home");
       }
@@ -779,10 +920,20 @@ function App() {
       params.delete("section");
       didChange = true;
     }
-    // Redirect ?section=privacy to /privacy so Privacy Policy has a distinct URL for Google
+    // Redirect ?section=privacy/about/terms to their canonical URLs
     if (section === "privacy") {
       setActiveSection("privacy");
       window.history.replaceState({}, "", "/privacy");
+      return;
+    }
+    if (section === "about") {
+      setActiveSection("about");
+      window.history.replaceState({}, "", "/about");
+      return;
+    }
+    if (section === "terms") {
+      setActiveSection("terms");
+      window.history.replaceState({}, "", "/terms");
       return;
     }
     if (didChange) {
@@ -1002,6 +1153,7 @@ function App() {
         );
         if (completeRes.ok) {
           window.localStorage.removeItem("pf_bank_reference");
+          sessionStorage.removeItem("pf_reconnect_pending");
           params.delete("state");
           params.delete("code");
           window.history.replaceState({}, "", window.location.pathname + (params.toString() ? `?${params}` : ""));
@@ -1075,6 +1227,7 @@ function App() {
         );
         if (completeRes.ok) {
           window.localStorage.removeItem("pf_bank_reference");
+          sessionStorage.removeItem("pf_reconnect_pending");
           const accountsRes = await fetch(`${apiBase}/api/accounts?_t=${Date.now()}`, {
             headers: { Authorization: `Bearer ${token}` },
             cache: "no-store",
@@ -1409,6 +1562,7 @@ function App() {
       }
 
       let intervalId: ReturnType<typeof setInterval> | null = null;
+      let rateLimitMessage: string | null = null;
       const poll = async () => {
         let anyPending = false;
         let hadFailure = false;
@@ -1424,7 +1578,10 @@ function App() {
             if (data.status === "completed" || data.status === "failed" || data.status === "rate_limited") {
               pending.delete(connectionId);
               if (data.status === "failed") hadFailure = true;
-              if (data.status === "rate_limited") hadRateLimit = true;
+              if (data.status === "rate_limited") {
+                hadRateLimit = true;
+                if (data.result?.message) rateLimitMessage = data.result.message;
+              }
             } else {
               anyPending = true;
             }
@@ -1432,7 +1589,7 @@ function App() {
         );
         if (!anyPending || pending.size === 0) {
           if (intervalId) clearInterval(intervalId);
-          if (hadRateLimit) showToast(t.gocardlessRateLimitExceeded, "warning");
+          if (hadRateLimit) showToast(rateLimitMessage || t.gocardlessRateLimitExceeded, "warning");
           else if (hadFailure) showToast(t.fetchFailed, "error");
           else showToast(t.fetchCompleted, "success");
           if (profile?.storage_mode === "local") {
@@ -1673,6 +1830,17 @@ function App() {
   }, [transactionCommentModal]);
 
   useEffect(() => {
+    if (!transactionBulkDeleteConfirm) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "Esc") {
+        if (!transactionBulkDeleteSubmitting) setTransactionBulkDeleteConfirm(null);
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [transactionBulkDeleteConfirm, transactionBulkDeleteSubmitting]);
+
+  useEffect(() => {
     if (!helpModalContext) return;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") setHelpModalContext(null);
@@ -1680,6 +1848,54 @@ function App() {
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [helpModalContext]);
+
+  useEffect(() => {
+    if (!accountLimitModalOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAccountLimitModalOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [accountLimitModalOpen]);
+
+  useEffect(() => {
+    if (!removeSlotModalOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setRemoveSlotModalOpen(false);
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [removeSlotModalOpen]);
+
+  useEffect(() => {
+    if (!createAlertModal.open) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" || e.key === "Esc")
+        setCreateAlertModal((prev) => ({ ...prev, open: false, txId: 0 }));
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [createAlertModal.open]);
+
+  useEffect(() => {
+    const shouldFetch = (accountLimitModalOpen || removeSlotModalOpen || profileTab === "subscription") && extraAccountPrice === null && !!apiToken && !!apiBase;
+    if (!shouldFetch) return;
+    fetch(`${apiBase}/api/me/subscription/account-slot-price`, {
+      headers: { Authorization: `Bearer ${apiToken}` },
+    })
+      .then((r) => r.ok ? r.json() : null)
+      .then((data) => { if (data?.unit_amount != null) setExtraAccountPrice(data); })
+      .catch(() => {});
+  }, [accountLimitModalOpen, removeSlotModalOpen, profileTab, extraAccountPrice, apiToken, apiBase]);
+
+  useEffect(() => {
+    if (profile?.subscription_monthly_total_cents != null && profile.subscription_monthly_total_currency) {
+      setSubscriptionMonthlyTotal({
+        unit_amount: profile.subscription_monthly_total_cents,
+        currency: profile.subscription_monthly_total_currency,
+      });
+    }
+  }, [profile?.subscription_monthly_total_cents, profile?.subscription_monthly_total_currency]);
 
   useEffect(() => {
     if (!featurePreviewSrc) return;
@@ -1714,19 +1930,40 @@ function App() {
       setTransactionsAccountFilter([]);
       return;
     }
+    const accountIds = bankAccounts.map((a) => a.id);
     setTransactionsAccountFilter((prev) => {
       if (prev.length === 0) {
-        return bankAccounts.map((account) => account.id);
-      }
-      const next = prev.filter((id) => bankAccounts.some((account) => account.id === id));
-      bankAccounts.forEach((account) => {
-        if (!next.includes(account.id)) {
-          next.push(account.id);
+        try {
+          const raw = window.localStorage.getItem(TRANSACTIONS_ACCOUNT_FILTER_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (Array.isArray(parsed)) {
+              const stored = parsed.map((x: unknown) => Number(x)).filter((n) => !Number.isNaN(n) && n > 0);
+              if (stored.length === 0) return []; // user had all unchecked; keep empty so no transactions shown
+              const next = stored.filter((id) => accountIds.includes(id));
+              accountIds.forEach((id) => {
+                if (!next.includes(id)) next.push(id);
+              });
+              return next;
+            }
+          }
+        } catch {
+          // ignore
         }
-      });
-      return next;
+        return [...accountIds];
+      }
+      return prev.filter((id) => accountIds.includes(id));
     });
   }, [bankAccounts]);
+
+  // Persist transactions account filter to localStorage so it survives page refresh
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(TRANSACTIONS_ACCOUNT_FILTER_KEY, JSON.stringify(transactionsAccountFilter));
+    } catch {
+      // ignore
+    }
+  }, [transactionsAccountFilter]);
 
   // When entering Transactions, load accounts/categories/tags once (avoids loop: loadAccounts→bankAccounts→filter effect→loadAllTransactions ref change)
   useEffect(() => {
@@ -2615,6 +2852,30 @@ function App() {
     }
   };
 
+  const handleBulkDeleteTransactions = async () => {
+    if (!apiToken || !transactionBulkDeleteConfirm) return;
+    const ids = transactionBulkDeleteConfirm.ids;
+    setTransactionBulkDeleteSubmitting(true);
+    let failed = false;
+    try {
+      for (const id of ids) {
+        const response = await fetch(`${apiBase}/api/transactions/${id}`, {
+          method: "DELETE",
+          headers: { Authorization: `Bearer ${apiToken}` },
+        });
+        if (!response.ok) failed = true;
+      }
+    } finally {
+      setTransactionBulkDeleteSubmitting(false);
+      setTransactionBulkDeleteConfirm(null);
+      setSelectedTransactionIds(new Set());
+      setTransactionsSelectMode(false);
+    }
+    if (failed) showToast(t.transactionUpdateError, "error");
+    loadAllTransactions();
+    loadRecentTransactions();
+  };
+
   const loadRecurringTransactions = useCallback(
     async (accountId: number) => {
       if (!apiToken) return;
@@ -2797,6 +3058,20 @@ function App() {
     if (response.ok) {
       const data = await response.json();
       if (data.link) {
+        try {
+          sessionStorage.setItem(
+            "pf_reconnect_pending",
+            JSON.stringify({
+              connection_id: data.connection_id ?? connectionId,
+              prev_reference: data.prev_reference ?? null,
+              prev_requisition_id: data.prev_requisition_id ?? null,
+              prev_status: data.prev_status ?? null,
+              prev_access_expired: data.prev_access_expired ?? null,
+            })
+          );
+        } catch {
+          // ignore
+        }
         window.location.href = data.link;
       }
     }
@@ -2839,7 +3114,7 @@ function App() {
           showToast(t.fetchFailed, "error");
         } else if (data.status === "rate_limited") {
           if (intervalId) clearInterval(intervalId);
-          showToast(t.gocardlessRateLimitExceeded, "warning");
+          showToast(data.result?.message || t.gocardlessRateLimitExceeded, "warning");
         }
       };
       intervalId = setInterval(poll, 2500);
@@ -3035,6 +3310,30 @@ function App() {
                   >
                     {t.menuAbout}
                   </button>
+                  <button
+                    className="dropdown-item w-full text-left"
+                    type="button"
+                    onClick={() => {
+                      setUserMenuLocked(true);
+                      setUserMenuOpen(false);
+                      setActiveSection("about");
+                      window.history.pushState({}, "", "/about");
+                    }}
+                  >
+                    {t.menuAboutUs}
+                  </button>
+                  <button
+                    className="dropdown-item w-full text-left"
+                    type="button"
+                    onClick={() => {
+                      setUserMenuLocked(true);
+                      setUserMenuOpen(false);
+                      setActiveSection("terms");
+                      window.history.pushState({}, "", "/terms");
+                    }}
+                  >
+                    {t.menuTerms}
+                  </button>
                 </>
                 ) : (
                   <>
@@ -3125,6 +3424,30 @@ function App() {
                       }}
                     >
                       {t.menuAbout}
+                    </button>
+                    <button
+                      className="dropdown-item w-full text-left"
+                      type="button"
+                      onClick={() => {
+                        setUserMenuLocked(true);
+                        setUserMenuOpen(false);
+                        setActiveSection("about");
+                        window.history.pushState({}, "", "/about");
+                      }}
+                    >
+                      {t.menuAboutUs}
+                    </button>
+                    <button
+                      className="dropdown-item w-full text-left"
+                      type="button"
+                      onClick={() => {
+                        setUserMenuLocked(true);
+                        setUserMenuOpen(false);
+                        setActiveSection("terms");
+                        window.history.pushState({}, "", "/terms");
+                      }}
+                    >
+                      {t.menuTerms}
                     </button>
                     <button
                       className="dropdown-item w-full text-left"
@@ -3225,6 +3548,30 @@ function App() {
                   <i className="fa-solid fa-circle-info"></i>
                   <span>{t.menuAbout}</span>
                 </button>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setActiveSection("about");
+                    window.history.pushState({}, "", "/about");
+                  }}
+                  className="mobile-nav-item"
+                  type="button"
+                >
+                  <i className="fa-solid fa-building"></i>
+                  <span>{t.menuAboutUs}</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setActiveSection("terms");
+                    window.history.pushState({}, "", "/terms");
+                  }}
+                  className="mobile-nav-item"
+                  type="button"
+                >
+                  <i className="fa-solid fa-file-contract"></i>
+                  <span>{t.menuTerms}</span>
+                </button>
               </>
             ) : (
               <>
@@ -3309,6 +3656,30 @@ function App() {
                 >
                   <i className="fa-solid fa-circle-info"></i>
                   <span>{t.menuAbout}</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setActiveSection("about");
+                    window.history.pushState({}, "", "/about");
+                  }}
+                  className="mobile-nav-item"
+                  type="button"
+                >
+                  <i className="fa-solid fa-building"></i>
+                  <span>{t.menuAboutUs}</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setActiveSection("terms");
+                    window.history.pushState({}, "", "/terms");
+                  }}
+                  className="mobile-nav-item"
+                  type="button"
+                >
+                  <i className="fa-solid fa-file-contract"></i>
+                  <span>{t.menuTerms}</span>
                 </button>
                 <button
                   onClick={() => {
@@ -4520,24 +4891,51 @@ function App() {
                   </label>
                 </div>
                 {exportModal.categoryMode === "selected" && categories.length > 0 ? (
-                  <div className="mt-2 flex max-h-32 flex-wrap gap-2 overflow-y-auto rounded border border-slate-200 bg-slate-50 p-2 dark:border-slate-600 dark:bg-slate-800">
-                    {categories.map((cat) => (
-                      <label key={cat.id} className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          checked={exportModal.selectedCategoryIds.includes(cat.id)}
-                          onChange={(e) =>
-                            setExportModal((prev) => ({
-                              ...prev,
-                              selectedCategoryIds: e.target.checked
-                                ? [...prev.selectedCategoryIds, cat.id]
-                                : prev.selectedCategoryIds.filter((id) => id !== cat.id),
-                            }))
-                          }
-                        />
-                        {cat.name}
-                      </label>
-                    ))}
+                  <div className="mt-2 rounded border border-slate-200 bg-slate-50 dark:border-slate-600 dark:bg-slate-800">
+                    <div className="flex flex-wrap gap-1 border-b border-slate-200 p-2 dark:border-slate-600">
+                      <button
+                        type="button"
+                        className="rounded px-2 py-1 text-xs transition-colors"
+                        style={{ color: "var(--primary)", background: "var(--primary-50)" }}
+                        onClick={() =>
+                          setExportModal((prev) => ({
+                            ...prev,
+                            selectedCategoryIds: categories.map((c) => c.id),
+                          }))
+                        }
+                      >
+                        {t.filterCategoryAll}
+                      </button>
+                      <button
+                        type="button"
+                        className="rounded px-2 py-1 text-xs transition-colors"
+                        style={{ color: "var(--text-secondary)", background: "var(--surface-hover)" }}
+                        onClick={() =>
+                          setExportModal((prev) => ({ ...prev, selectedCategoryIds: [] }))
+                        }
+                      >
+                        {t.filterCategoryNone}
+                      </button>
+                    </div>
+                    <div className="flex max-h-32 flex-wrap gap-2 overflow-y-auto p-2">
+                      {categories.map((cat) => (
+                        <label key={cat.id} className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={exportModal.selectedCategoryIds.includes(cat.id)}
+                            onChange={(e) =>
+                              setExportModal((prev) => ({
+                                ...prev,
+                                selectedCategoryIds: e.target.checked
+                                  ? [...prev.selectedCategoryIds, cat.id]
+                                  : prev.selectedCategoryIds.filter((id) => id !== cat.id),
+                              }))
+                            }
+                          />
+                          {cat.name}
+                        </label>
+                      ))}
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -4729,7 +5127,65 @@ function App() {
           />
           </Suspense>
         ) : null}
-        {activeSection !== "privacy" && isAuthenticated && authError ? (
+        {activeSection === "about" ? (
+          <Suspense fallback={<SectionFallback />}>
+            <LazyAboutUs
+              onBack={() => {
+                window.history.pushState({}, "", "/");
+                setActiveSection(isAuthenticated ? "transactions" : "home");
+              }}
+              t={{
+                aboutTitle: t.aboutTitle,
+                aboutBack: t.aboutBack,
+                aboutLastUpdated: t.aboutLastUpdated,
+                aboutIntro: t.aboutIntro,
+                aboutMissionTitle: t.aboutMissionTitle,
+                aboutMissionContent: t.aboutMissionContent,
+                aboutPsd2Paragraph: t.aboutPsd2Paragraph,
+                aboutPsd2LinkText: t.aboutPsd2LinkText,
+                aboutValuesTitle: t.aboutValuesTitle,
+                aboutValuesContent: t.aboutValuesContent,
+                aboutContactTitle: t.aboutContactTitle,
+                aboutContactIntro: t.aboutContactIntro,
+              }}
+            />
+          </Suspense>
+        ) : null}
+        {activeSection === "terms" ? (
+          <Suspense fallback={<SectionFallback />}>
+            <LazyTermsOfService
+              onBack={() => {
+                window.history.pushState({}, "", "/");
+                setActiveSection(isAuthenticated ? "transactions" : "home");
+              }}
+              t={{
+                termsTitle: t.termsTitle,
+                termsBack: t.termsBack,
+                termsLastUpdated: t.termsLastUpdated,
+                termsIntro: t.termsIntro,
+                termsSection1Title: t.termsSection1Title,
+                termsSection1Content: t.termsSection1Content,
+                termsSection2Title: t.termsSection2Title,
+                termsSection2Content: t.termsSection2Content,
+                termsSection3Title: t.termsSection3Title,
+                termsSection3Content: t.termsSection3Content,
+                termsSection4Title: t.termsSection4Title,
+                termsSection4Content: t.termsSection4Content,
+                termsSection5Title: t.termsSection5Title,
+                termsSection5Content: t.termsSection5Content,
+                termsSection6Title: t.termsSection6Title,
+                termsSection6Content: t.termsSection6Content,
+                termsSection7Title: t.termsSection7Title,
+                termsSection7Content: t.termsSection7Content,
+                termsSection8Title: t.termsSection8Title,
+                termsSection8Content: t.termsSection8Content,
+                termsContactTitle: t.termsContactTitle,
+                termsContactIntro: t.termsContactIntro,
+              }}
+            />
+          </Suspense>
+        ) : null}
+        {activeSection !== "privacy" && activeSection !== "about" && activeSection !== "terms" && isAuthenticated && authError ? (
           <section className="mx-auto max-w-3xl px-6 py-24">
             <div className="card">
               <h2 className="card-title">
@@ -4763,6 +5219,10 @@ function App() {
               setProfileTab("subscription");
               showToast(t.subscriptionNoAccess, "error");
             }}
+            onAccountLimitReached={() => {
+              setAccountLimitModalOpen(true);
+            }}
+            isOverAutoLimit={isOverAutoLimit}
             t={{
               onboardingTitle: t.onboardingTitle,
               onboardingBody: t.onboardingBody,
@@ -4784,6 +5244,7 @@ function App() {
               actionReconnectBank: t.actionReconnectBank,
               actionReauthRequired: t.actionReauthRequired,
               actionFetchTransactions: t.actionFetchTransactions,
+              automaticAccountsOverLimitTooltip: t.automaticAccountsOverLimitTooltip,
               actionDeleteAccount: t.actionDeleteAccount,
               accountTransactionAlerts: t.accountTransactionAlerts,
               alertTemplateDay: t.alertTemplateDay,
@@ -5027,29 +5488,31 @@ function App() {
               <i className="fa-regular fa-circle-question" aria-hidden />
             </button>
             <div className="absolute top-14 right-4 z-10 flex items-center gap-2">
-              <button
-                type="button"
-                className="bordered-icon-btn shrink-0 inline-flex items-center justify-center border rounded-full w-8 h-8 disabled:opacity-50 disabled:pointer-events-none"
-                style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-secondary)" }}
-                onClick={() => refreshAllTransactions()}
-                disabled={balancesRefreshing || transactionsRefreshing}
-                title={transactionsRefreshing ? t.refreshingTransactions : t.refreshTransactions}
-                aria-label={transactionsRefreshing ? t.refreshingTransactions : t.refreshTransactions}
-              >
-                <i className={`fa-solid fa-arrows-rotate ${transactionsRefreshing ? "fa-spin" : ""}`} aria-hidden />
-              </button>
-              {profile?.show_account_balances ? (
+              <span title={isOverAutoLimit ? t.automaticAccountsOverLimitTooltip : (transactionsRefreshing ? t.refreshingTransactions : t.refreshTransactions)}>
                 <button
                   type="button"
-                  className="bordered-icon-btn shrink-0 inline-flex items-center justify-center border rounded-full w-8 h-8 disabled:opacity-50 disabled:pointer-events-none"
+                  className="bordered-icon-btn shrink-0 inline-flex items-center justify-center border rounded-full w-8 h-8 disabled:opacity-50"
                   style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-secondary)" }}
-                  onClick={() => refreshBalances()}
-                  disabled={balancesRefreshing || transactionsRefreshing}
-                  title={balancesRefreshing ? t.refreshingBalances : t.refreshBalances}
-                  aria-label={balancesRefreshing ? t.refreshingBalances : t.refreshBalances}
+                  onClick={() => refreshAllTransactions()}
+                  disabled={balancesRefreshing || transactionsRefreshing || isOverAutoLimit}
+                  aria-label={transactionsRefreshing ? t.refreshingTransactions : t.refreshTransactions}
                 >
-                  <i className={`fa-solid fa-scale-balanced ${balancesRefreshing ? "fa-spin" : ""}`} aria-hidden />
+                  <i className={`fa-solid fa-arrows-rotate ${transactionsRefreshing ? "fa-spin" : ""}`} aria-hidden />
                 </button>
+              </span>
+              {profile?.show_account_balances ? (
+                <span title={isOverAutoLimit ? t.automaticAccountsOverLimitTooltip : (balancesRefreshing ? t.refreshingBalances : t.refreshBalances)}>
+                  <button
+                    type="button"
+                    className="bordered-icon-btn shrink-0 inline-flex items-center justify-center border rounded-full w-8 h-8 disabled:opacity-50"
+                    style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-secondary)" }}
+                    onClick={() => refreshBalances()}
+                    disabled={balancesRefreshing || transactionsRefreshing || isOverAutoLimit}
+                    aria-label={balancesRefreshing ? t.refreshingBalances : t.refreshBalances}
+                  >
+                    <i className={`fa-solid fa-scale-balanced ${balancesRefreshing ? "fa-spin" : ""}`} aria-hidden />
+                  </button>
+                </span>
               ) : null}
             </div>
             {transactionDeleteConfirm ? (
@@ -5089,6 +5552,56 @@ function App() {
                       title={t.actionDelete}
                       aria-label={t.actionDelete}
                       onClick={handleTransactionDelete}
+                    >
+                      <i className="fa-solid fa-trash-can" aria-hidden />
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+            {transactionBulkDeleteConfirm ? (
+              <div
+                className="modal-overlay"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="delete-transactions-title"
+              >
+                <div className="modal-card max-w-md">
+                  <h3 id="delete-transactions-title" className="card-title">
+                    {t.confirmDeleteTransactions}
+                  </h3>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 mt-2">
+                    {t.confirmDeleteTransactionsWarning}
+                  </p>
+                  <p className="text-sm mt-2" style={{ color: "var(--text)" }}>
+                    {transactionBulkDeleteConfirm.ids.length} selected
+                  </p>
+                  {transactionBulkDeleteSubmitting ? (
+                    <p className="text-sm mt-2 flex items-center gap-2" style={{ color: "var(--text-secondary)" }}>
+                      <i className="fa-solid fa-spinner fa-spin" aria-hidden />
+                      Deleting…
+                    </p>
+                  ) : null}
+                  <div className="flex gap-2 mt-4">
+                    <button
+                      type="button"
+                      className="bordered-icon-btn shrink-0 inline-flex items-center justify-center border"
+                      style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text)" }}
+                      title={t.modalCancel}
+                      aria-label={t.modalCancel}
+                      onClick={() => setTransactionBulkDeleteConfirm(null)}
+                      disabled={transactionBulkDeleteSubmitting}
+                    >
+                      <i className="fa-solid fa-xmark" aria-hidden />
+                    </button>
+                    <button
+                      type="button"
+                      className="bordered-icon-btn shrink-0 inline-flex items-center justify-center border border-rose-600 bg-rose-600 text-white hover:bg-rose-700 hover:border-rose-700 disabled:opacity-70 disabled:pointer-events-none"
+                      style={{ borderColor: "#be123c", backgroundColor: "#be123c", color: "#fff" }}
+                      title={t.actionDelete}
+                      aria-label={t.actionDelete}
+                      onClick={handleBulkDeleteTransactions}
+                      disabled={transactionBulkDeleteSubmitting}
                     >
                       <i className="fa-solid fa-trash-can" aria-hidden />
                     </button>
@@ -5261,7 +5774,34 @@ function App() {
 
             <section className="mx-auto max-w-6xl px-6 py-10">
               <div className="card">
-                <h3 className="card-title">{t.transactionsListTitle}</h3>
+                <div className="flex flex-wrap items-center gap-3">
+                  <h3 className="card-title mb-0">{t.transactionsListTitle}</h3>
+                  <label className="flex items-center gap-2 cursor-pointer shrink-0" title={t.transactionsSelectAll}>
+                    <input
+                      type="checkbox"
+                      checked={transactionsSelectMode && transactionsAll.length > 0 && transactionsAll.every((tx) => selectedTransactionIds.has(tx.id))}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setTransactionsSelectMode(checked);
+                        setSelectedTransactionIds(checked ? new Set(transactionsAll.map((tx) => tx.id)) : new Set());
+                      }}
+                      className="h-4 w-4"
+                      aria-label={t.transactionsSelectAll}
+                    />
+                    <span className="text-sm" style={{ color: "var(--text-secondary)" }}>{t.transactionsSelectAll}</span>
+                  </label>
+                  {transactionsSelectMode && selectedTransactionIds.size > 0 ? (
+                    <button
+                      type="button"
+                      className="icon-button shrink-0 text-rose-600 hover:text-rose-700 dark:text-rose-400 dark:hover:text-rose-300"
+                      title={t.actionDelete}
+                      aria-label={t.actionDelete}
+                      onClick={() => setTransactionBulkDeleteConfirm({ ids: Array.from(selectedTransactionIds) })}
+                    >
+                      <i className="fa-solid fa-trash-can" aria-hidden />
+                    </button>
+                  ) : null}
+                </div>
               <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
                 <input
                   className="input flex-1 min-w-[220px]"
@@ -5423,11 +5963,11 @@ function App() {
                 </div>
                 <button
                   type="button"
-                  className="flex items-center gap-2 px-4 py-2 rounded-lg border transition-colors"
+                  className="bordered-icon-btn shrink-0 inline-flex items-center justify-center border rounded-full w-8 h-8"
                   style={{
-                    background: "var(--surface-hover)",
                     borderColor: "var(--border)",
-                    color: "var(--text)",
+                    background: "var(--surface)",
+                    color: "var(--text-secondary)",
                   }}
                   onClick={() =>
                     setExportModal((prev) => ({
@@ -5439,9 +5979,9 @@ function App() {
                     }))
                   }
                   title={t.exportDownload}
+                  aria-label={t.exportDownload}
                 >
-                  <i className="fa-solid fa-file-csv" aria-hidden></i>
-                  <span>{t.exportDownload}</span>
+                  <i className="fa-solid fa-file-csv text-sm" aria-hidden />
                 </button>
               </div>
               <div className="mt-2 flex items-center justify-between text-xs text-slate-500 dark:text-slate-300">
@@ -5497,6 +6037,24 @@ function App() {
                       key={tx.id}
                       className="flex flex-col gap-2 border-b border-slate-200 pb-3 text-sm dark:border-slate-700 md:flex-row md:flex-wrap md:items-center md:justify-between"
                     >
+                      {transactionsSelectMode ? (
+                        <div className="flex shrink-0 order-0 self-start md:order-none md:self-center">
+                          <input
+                            type="checkbox"
+                            checked={selectedTransactionIds.has(tx.id)}
+                            onChange={(e) => {
+                              setSelectedTransactionIds((prev) => {
+                                const next = new Set(prev);
+                                if (e.target.checked) next.add(tx.id);
+                                else next.delete(tx.id);
+                                return next;
+                              });
+                            }}
+                            className="mt-1.5 shrink-0 md:mt-0"
+                            aria-label={t.transactionsSelectAll}
+                          />
+                        </div>
+                      ) : null}
                       <label className="flex min-w-0 flex-1 cursor-pointer items-start gap-2 order-1">
                         <input
                           type="checkbox"
@@ -6778,6 +7336,7 @@ function App() {
                                 }
                                 return null;
                               })()}
+                              {formattedMonthlyTotal && <> · {formattedMonthlyTotal}/{t.perMonth}</>}
                             </p>
                           )}
                           {profile.subscription_status !== "active" && (
@@ -6800,7 +7359,7 @@ function App() {
                     </>
                   ) : profile?.has_subscription_access ? (
                     <>
-                      {/* Active subscription: one row — status + date left, manage (icon) right */}
+                      {/* Active subscription: one row — status + date + total left, manage (icon) right */}
                       {profile.subscription_status === "active" && (
                         <div className="flex items-center justify-between gap-3 flex-wrap">
                           <p className="text-sm m-0" style={{ color: "var(--text)" }}>
@@ -6812,6 +7371,7 @@ function App() {
                               }
                               return null;
                             })()}
+                            {formattedMonthlyTotal && <> · {formattedMonthlyTotal}/{t.perMonth}</>}
                           </p>
                           <div className="flex items-center gap-2 shrink-0">
                             <button
@@ -6973,6 +7533,64 @@ function App() {
                     </div>
                   )}
                 </div>
+                {/* Automatic account usage */}
+                {profile?.has_subscription_access && (
+                  <div className="mt-4 pt-4" style={{ borderTop: "1px solid var(--border)" }}>
+                    <div className="flex items-center justify-between gap-3 flex-wrap">
+                      <div>
+                        <p className="text-sm font-medium m-0" style={{ color: "var(--text)" }}>
+                          {t.automaticAccountsLabel ?? "Automatic accounts"}
+                        </p>
+                        <p className="text-xs m-0 mt-0.5" style={{ color: "var(--text-secondary)" }}>
+                          {profile.current_automatic_accounts ?? 0} / {profile.allowed_automatic_accounts ?? 2} {t.automaticAccountsUsed ?? "used"}
+                          {(profile.extra_automatic_accounts ?? 0) > 0 && (
+                            <> · {profile.extra_automatic_accounts} {t.automaticAccountsExtra ?? "extra"}</>
+                          )}
+                        </p>
+                      </div>
+                      {profile.subscription_status === "active" && (
+                        <div className="flex flex-col gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors disabled:opacity-60"
+                            style={{
+                              borderColor: "var(--border)",
+                              background: "var(--surface-hover)",
+                              color: "var(--text)",
+                            }}
+                            disabled={accountSlotLoading || removeSlotLoading}
+                            title={formattedSlotPrice ? `${t.automaticAccountsAddSlot ?? "Add account"} · ${formattedSlotPrice}/${t.perMonth}` : (t.automaticAccountsAddSlot ?? "Add account")}
+                            onClick={() => setAccountLimitModalOpen(true)}
+                          >
+                            <i className="fa-solid fa-plus text-[10px]" aria-hidden />
+                            {formattedSlotPrice
+                              ? `${t.automaticAccountsAddSlot ?? "Add account"} · ${formattedSlotPrice}/${t.perMonth}`
+                              : (t.automaticAccountsAddSlot ?? "Add account")}
+                          </button>
+                          {(profile.extra_automatic_accounts ?? 0) > 0 && (
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors disabled:opacity-60"
+                              style={{
+                                borderColor: "var(--border)",
+                                background: "var(--surface-hover)",
+                                color: "var(--text-secondary)",
+                              }}
+                              disabled={accountSlotLoading || removeSlotLoading}
+                              title={formattedSlotPrice ? `${t.automaticAccountsRemoveSlot ?? "Remove account"} · -${formattedSlotPrice}/${t.perMonth}` : (t.automaticAccountsRemoveSlot ?? "Remove account")}
+                              onClick={() => setRemoveSlotModalOpen(true)}
+                            >
+                              <i className="fa-solid fa-minus text-[10px]" aria-hidden />
+                              {formattedSlotPrice
+                                ? `${t.automaticAccountsRemoveSlot ?? "Remove account"} · -${formattedSlotPrice}/${t.perMonth}`
+                                : (t.automaticAccountsRemoveSlot ?? "Remove account")}
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
                     </>
                   )}
                   {profileTab === "tokens" && (
@@ -7471,6 +8089,26 @@ function App() {
               adminEditTelegram: t.adminEditTelegram,
               adminTelegramModalTitle: t.adminTelegramModalTitle,
               adminTelegramSave: t.adminTelegramSave,
+              adminResendSync: t.adminResendSync,
+              adminResendSyncing: t.adminResendSyncing,
+              adminResendSyncSuccess: t.adminResendSyncSuccess,
+              adminResendSyncError: t.adminResendSyncError,
+              adminBroadcast: t.adminBroadcast,
+              adminBroadcastTitle: t.adminBroadcastTitle,
+              adminBroadcastDesc: t.adminBroadcastDesc,
+              adminBroadcastSelectTemplate: t.adminBroadcastSelectTemplate,
+              adminBroadcastSend: t.adminBroadcastSend,
+              adminBroadcastSending: t.adminBroadcastSending,
+              adminBroadcastSuccess: t.adminBroadcastSuccess,
+              adminBroadcastError: t.adminBroadcastError,
+              adminBroadcastLoadingTemplates: t.adminBroadcastLoadingTemplates,
+              adminBroadcastNoTemplates: t.adminBroadcastNoTemplates,
+              adminBroadcastStepTranslating: t.adminBroadcastStepTranslating,
+              adminBroadcastStepSending: t.adminBroadcastStepSending,
+              adminBroadcastStepCleanup: t.adminBroadcastStepCleanup,
+              adminBroadcastDetailSent: t.adminBroadcastDetailSent,
+              adminBroadcastDetailErrors: t.adminBroadcastDetailErrors,
+              adminBroadcastDetailDeleted: t.adminBroadcastDetailDeleted,
             }}
           />
           </Suspense>
@@ -7538,6 +8176,28 @@ function App() {
                   className="text-sm text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400"
                 >
                   {t.footerPrivacy}
+                </a>
+                <a
+                  href="/about"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setActiveSection("about");
+                    window.history.pushState({}, "", "/about");
+                  }}
+                  className="text-sm text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400"
+                >
+                  {t.footerAbout}
+                </a>
+                <a
+                  href="/terms"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setActiveSection("terms");
+                    window.history.pushState({}, "", "/terms");
+                  }}
+                  className="text-sm text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400"
+                >
+                  {t.footerTerms}
                 </a>
               </div>
             </div>
@@ -7934,9 +8594,9 @@ function App() {
       <footer
         className={`fixed bottom-0 left-0 right-0 w-full border-t border-slate-200 bg-slate-50 transition-transform duration-300 ease-out dark:border-slate-800 dark:bg-slate-900 ${bottomBarVisible ? "translate-y-0" : "translate-y-full"}`}
       >
-        <div className="mx-auto flex min-w-0 max-w-6xl flex-col items-center justify-between gap-4 px-6 py-6 text-sm text-slate-500 dark:text-slate-400 md:flex-row">
-          <div className="flex min-w-0 flex-wrap items-center justify-center gap-x-4 gap-y-1">
-            <span>{t.footerCopyright}</span>
+        <div className="mx-auto flex min-w-0 max-w-6xl flex-row items-center justify-between gap-x-4 px-6 py-4 text-sm text-slate-500 dark:text-slate-400">
+          <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-1">
+            <span className="whitespace-nowrap">{t.footerCopyright}</span>
             <a
               href="/privacy"
               onClick={(e) => {
@@ -7944,20 +8604,40 @@ function App() {
                 setActiveSection("privacy");
                 window.history.pushState({}, "", "/privacy");
               }}
-              className="hover:text-blue-600 dark:hover:text-blue-400"
+              className="whitespace-nowrap hover:text-blue-600 dark:hover:text-blue-400"
             >
               {t.footerPrivacy}
             </a>
+            <a
+              href="/about"
+              onClick={(e) => {
+                e.preventDefault();
+                setActiveSection("about");
+                window.history.pushState({}, "", "/about");
+              }}
+              className="whitespace-nowrap hover:text-blue-600 dark:hover:text-blue-400"
+            >
+              {t.footerAbout}
+            </a>
+            <a
+              href="/terms"
+              onClick={(e) => {
+                e.preventDefault();
+                setActiveSection("terms");
+                window.history.pushState({}, "", "/terms");
+              }}
+              className="whitespace-nowrap hover:text-blue-600 dark:hover:text-blue-400"
+            >
+              {t.footerTerms}
+            </a>
+            <span className="whitespace-nowrap text-xs opacity-80">{t.footerMadeInPortugal}</span>
           </div>
-          <div className="flex gap-4">
+          <div className="flex shrink-0 gap-4 pl-2">
             <a href="https://github.com/kal001/eurodata-public" target="_blank" rel="noopener noreferrer" aria-label={t.footerGithub} className="hover:text-blue-600">
               <i className="fa-brands fa-github"></i>
             </a>
             <a href="#" aria-label={t.footerLinkedin} className="hover:text-blue-600">
               <i className="fa-brands fa-linkedin"></i>
-            </a>
-            <a href="#" aria-label={t.footerTwitter} className="hover:text-blue-600">
-              <i className="fa-brands fa-x-twitter"></i>
             </a>
           </div>
         </div>
@@ -7990,8 +8670,199 @@ function App() {
         />
       )}
 
-      {/* Floating "To top" - all authenticated sections when scrolled */}
-      {isAuthenticated && !profile?.needs_onboarding && showToTopButton && (
+      {/* Account limit modal — shown when user tries to add an automatic account beyond their limit */}
+      {accountLimitModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.5)" }}
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => { if (e.target === e.currentTarget) setAccountLimitModalOpen(false); }}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl shadow-xl p-6"
+            style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+          >
+            <div className="flex items-start justify-between gap-3 mb-2">
+              <h2 className="text-base font-semibold" style={{ color: "var(--text)" }}>
+                {t.accountLimitTitle ?? "Automatic account limit reached"}
+              </h2>
+              <button
+                type="button"
+                className="p-1.5 rounded-md border transition-colors shrink-0 -mt-0.5"
+                style={{ borderColor: "var(--border)", background: "var(--surface-hover)", color: "var(--text-secondary)" }}
+                title={t.modalCancel}
+                aria-label={t.modalCancel}
+                onClick={() => setAccountLimitModalOpen(false)}
+              >
+                <i className="fa-solid fa-xmark text-sm" aria-hidden />
+              </button>
+            </div>
+            <p className="text-sm mb-1" style={{ color: "var(--text-secondary)" }}>
+              {formattedSlotPrice
+                ? t.accountLimitBody?.replace(/0[.,]75\s*€/g, formattedSlotPrice) ?? `Your plan includes 2 automatic accounts. Each additional account costs ${formattedSlotPrice}/month and is billed through your existing subscription.`
+                : (t.accountLimitBody ?? "Your plan includes 2 automatic accounts. Each additional account costs 0.75€/month and is billed through your existing subscription.")}
+            </p>
+            {profile?.current_automatic_accounts !== undefined && profile?.allowed_automatic_accounts !== undefined && (
+              <p className="text-xs mb-4" style={{ color: "var(--text-secondary)" }}>
+                {t.automaticAccountsLabel ?? "Automatic accounts"}: {profile.current_automatic_accounts} / {profile.allowed_automatic_accounts}
+              </p>
+            )}
+            {profile?.subscription_status !== "active" ? (
+              <div>
+                <p className="text-sm mb-4" style={{ color: "var(--text-secondary)" }}>
+                  {t.accountLimitSubscribeFirst ?? "Subscribe to get more automatic account slots."}
+                </p>
+                <div className="flex gap-2 justify-end">
+                  <button
+                    type="button"
+                    className="inline-flex items-center justify-center w-9 h-9 rounded-lg border transition-colors disabled:opacity-60"
+                    style={{ borderColor: "var(--border)", background: "var(--surface-hover)", color: "var(--text)" }}
+                    disabled={subscriptionCheckoutLoading}
+                    title={t.subscriptionSubscribe ?? "Subscribe"}
+                    aria-label={t.subscriptionSubscribe ?? "Subscribe"}
+                    onClick={async () => {
+                      if (!apiToken || !apiBase) return;
+                      setSubscriptionCheckoutLoading(true);
+                      try {
+                        const res = await fetch(`${apiBase}/api/me/subscription/checkout`, {
+                          method: "POST",
+                          headers: { Authorization: `Bearer ${apiToken}` },
+                        });
+                        const data = await res.json();
+                        if (data?.url) window.location.href = data.url;
+                        else showToast(data?.detail ?? "Checkout failed", "error");
+                      } finally {
+                        setSubscriptionCheckoutLoading(false);
+                      }
+                    }}
+                  >
+                    <i className={`fa-solid ${subscriptionCheckoutLoading ? "fa-spinner fa-spin" : "fa-credit-card"} text-sm`} aria-hidden />
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-2 justify-end">
+                <button
+                  type="button"
+                  className="inline-flex items-center justify-center w-9 h-9 rounded-lg border transition-colors disabled:opacity-60"
+                  style={{ borderColor: "var(--border)", background: "var(--surface-hover)", color: "var(--text)" }}
+                  disabled={accountSlotLoading}
+                  title={formattedSlotPrice
+                    ? `${t.accountLimitConfirm ?? "Add account"} · ${formattedSlotPrice}/${t.perMonth}`
+                    : (t.accountLimitConfirm ?? "Add account")}
+                  aria-label={formattedSlotPrice
+                    ? `${t.accountLimitConfirm ?? "Add account"} · ${formattedSlotPrice}/${t.perMonth}`
+                    : (t.accountLimitConfirm ?? "Add account")}
+                  onClick={async () => {
+                    if (!apiToken || !apiBase) return;
+                    setAccountSlotLoading(true);
+                    try {
+                      const res = await fetch(`${apiBase}/api/me/subscription/account-slot`, {
+                        method: "POST",
+                        headers: { Authorization: `Bearer ${apiToken}` },
+                      });
+                      if (res.ok) {
+                        setAccountLimitModalOpen(false);
+                        const meRes = await fetch(`${apiBase}/api/me`, { headers: { Authorization: `Bearer ${apiToken}` } });
+                        if (meRes.ok) setProfile(await meRes.json());
+                        showToast(t.accountSlotAdded ?? "Account slot added. You can now connect another bank.", "success");
+                      } else {
+                        const err = await res.json().catch(() => ({}));
+                        showToast(err?.detail ?? "Could not add account slot.", "error");
+                      }
+                    } finally {
+                      setAccountSlotLoading(false);
+                    }
+                  }}
+                >
+                  <i className={`fa-solid ${accountSlotLoading ? "fa-spinner fa-spin" : "fa-plus"} text-sm`} aria-hidden />
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Remove slot modal — confirm reducing extra automatic account slots */}
+      {removeSlotModalOpen && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center p-4"
+          style={{ background: "rgba(0,0,0,0.5)" }}
+          role="dialog"
+          aria-modal="true"
+          onClick={(e) => { if (e.target === e.currentTarget) setRemoveSlotModalOpen(false); }}
+        >
+          <div
+            className="w-full max-w-sm rounded-xl shadow-xl p-6"
+            style={{ background: "var(--surface)", border: "1px solid var(--border)" }}
+          >
+            <div className="flex items-start justify-between gap-3 mb-2">
+              <h2 className="text-base font-semibold" style={{ color: "var(--text)" }}>
+                {t.removeSlotTitle ?? "Reduce automatic accounts"}
+              </h2>
+              <button
+                type="button"
+                className="p-1.5 rounded-md border transition-colors shrink-0 -mt-0.5"
+                style={{ borderColor: "var(--border)", background: "var(--surface-hover)", color: "var(--text-secondary)" }}
+                title={t.modalCancel}
+                aria-label={t.modalCancel}
+                onClick={() => setRemoveSlotModalOpen(false)}
+              >
+                <i className="fa-solid fa-xmark text-sm" aria-hidden />
+              </button>
+            </div>
+            {profile?.current_automatic_accounts !== undefined && profile?.allowed_automatic_accounts !== undefined && (
+              <p className="text-xs mb-3" style={{ color: "var(--text-secondary)" }}>
+                {t.automaticAccountsLabel ?? "Automatic accounts"}: {profile.current_automatic_accounts} / {profile.allowed_automatic_accounts}
+              </p>
+            )}
+            {/* Show warning only when reducing would leave the user over the new limit */}
+            {(profile?.current_automatic_accounts ?? 0) > (profile?.allowed_automatic_accounts ?? 0) - 1 && (
+              <p className="text-sm mb-4 p-3 rounded-lg" style={{ background: "var(--surface-hover)", color: "var(--text-secondary)" }}>
+                <i className="fa-solid fa-triangle-exclamation mr-1.5" aria-hidden />
+                {t.removeSlotWarningBody ?? "You will have more connected automatic accounts than available slots. Until you disconnect the excess accounts, automatic transaction and balance fetches will stop and you won't be able to add new automatic accounts."}
+              </p>
+            )}
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                className="inline-flex items-center justify-center w-9 h-9 rounded-lg border transition-colors disabled:opacity-60"
+                style={{ borderColor: "var(--border)", background: "var(--surface-hover)", color: "var(--text)" }}
+                disabled={removeSlotLoading}
+                title={t.removeSlotConfirm ?? "Confirm"}
+                aria-label={t.removeSlotConfirm ?? "Confirm"}
+                onClick={async () => {
+                  if (!apiToken || !apiBase) return;
+                  setRemoveSlotLoading(true);
+                  try {
+                    const res = await fetch(`${apiBase}/api/me/subscription/account-slot`, {
+                      method: "DELETE",
+                      headers: { Authorization: `Bearer ${apiToken}` },
+                    });
+                    if (res.ok) {
+                      setRemoveSlotModalOpen(false);
+                      const meRes = await fetch(`${apiBase}/api/me`, { headers: { Authorization: `Bearer ${apiToken}` } });
+                      if (meRes.ok) setProfile(await meRes.json());
+                      showToast(t.removeSlotRemoved ?? "Automatic account slot removed.", "success");
+                    } else {
+                      const err = await res.json().catch(() => ({}));
+                      showToast(err?.detail ?? "Could not remove account slot.", "error");
+                    }
+                  } finally {
+                    setRemoveSlotLoading(false);
+                  }
+                }}
+              >
+                <i className={`fa-solid ${removeSlotLoading ? "fa-spinner fa-spin" : "fa-check"} text-sm`} aria-hidden />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Floating "To top" - authenticated sections + public long pages (terms, about, privacy) */}
+      {showToTopButton && (isAuthenticated && !profile?.needs_onboarding || activeSection === "terms" || activeSection === "about" || activeSection === "privacy") && (
         <button
           type="button"
           className="fixed bottom-6 right-6 p-3 rounded-full shadow-lg border z-30 transition-opacity"

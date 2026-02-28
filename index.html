@@ -3,11 +3,17 @@
   <head>
     <script>
       try {
-        if (localStorage.getItem("pf_theme") === "dark") {
+        var isDark = localStorage.getItem("pf_theme") === "dark";
+        if (isDark) {
           document.documentElement.classList.add("dark");
         } else {
           document.documentElement.classList.remove("dark");
         }
+        var link = document.createElement("link");
+        link.rel = "preload";
+        link.as = "image";
+        link.href = isDark ? "/landing-dark.jpeg" : "/landing-light.jpeg";
+        document.head.appendChild(link);
       } catch (e) {}
     </script>
     <meta charset="UTF-8" />
@@ -16,7 +22,13 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="preconnect" href="https://cdnjs.cloudflare.com" crossorigin />
-    <!-- Non-render-blocking: load fonts with display=swap (already in URL), apply after load -->
+    <!-- Preload font stylesheet so Inter/Fira load earlier -->
+    <link
+      rel="preload"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code&display=swap"
+      as="style"
+    />
+    <!-- display=swap: show fallback first, then swap when font loads (avoids font-display timeout console warnings) -->
     <link
       href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code&display=swap"
       rel="stylesheet"
@@ -24,17 +36,18 @@
       onload="this.media='all'"
     />
     <noscript><link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code&display=swap" rel="stylesheet" /></noscript>
-    <!-- Non-render-blocking: Font Awesome loaded async to avoid blocking FCP/LCP -->
+    <!-- Non-render-blocking: Font Awesome loaded async (6.6.0; glyph bbox console warnings are a known FA webfont quirk, safe to ignore) -->
     <link
       rel="stylesheet"
-      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css"
       crossorigin="anonymous"
       referrerpolicy="no-referrer"
       media="print"
       onload="this.media='all'"
     />
-    <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" /></noscript>
+    <noscript><link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.6.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" /></noscript>
     <link rel="manifest" href="/manifest.json" />
+    <link rel="canonical" href="https://eurodata.app/" />
     <meta name="theme-color" content="#2563EB" />
     <meta name="description" content="__VITE_APP_DESCRIPTION__" />
     <title>__VITE_APP_NAME__</title>

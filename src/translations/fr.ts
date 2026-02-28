@@ -56,6 +56,7 @@ export const translationsFr: Record<string, string> = {
     "Attribuez plusieurs étiquettes par transaction pour filtrer et rapporter. Utilisez les étiquettes pour associer les transactions aux utilisateurs. Utilisez les étiquettes pour distinguer les transactions personnelles ou professionnelles, par exemple.",
   footerCopyright: "© 2026 eurodata.app",
   footerPrivacy: "Politique de confidentialité",
+  footerMadeInPortugal: "Fait au Portugal",
   footerGithub: "GitHub",
   footerLinkedin: "LinkedIn",
   footerTwitter: "X",
@@ -130,7 +131,7 @@ export const translationsFr: Record<string, string> = {
     "Cette politique de confidentialité s'applique à l'application web eurodata.app (Bancos), qui propose le suivi des relevés bancaires et cartes. Le service est destiné aux utilisateurs en Europe.",
   privacySection2Title: "2. Données que nous collectons",
   privacySection2Content:
-    "Nous ne collectons et ne traitons que les données nécessaires au service : informations de compte que vous configurez (ex. nom, pays, préférences de notification), données d'authentification gérées par Auth0 (ex. e-mail, connexion) et données de transactions bancaires que vous liez via l'open banking (Nordigen/GoCardless) uniquement pour afficher et catégoriser vos transactions. Nous ne collectons ni ne stockons de données pour la publicité ou l'analyse vous identifiant.",
+    "Nous ne collectons et ne traitons que les données nécessaires au service : informations de compte que vous configurez (ex. nom, pays, préférences de notification), données d'authentification (ex. e-mail, connexion) et données de transactions bancaires que vous liez via l'open banking uniquement pour afficher et catégoriser vos transactions. Nous ne collectons ni ne stockons de données pour la publicité ou l'analyse vous identifiant.",
   privacySection3Title: "3. Comment nous utilisons vos données",
   privacySection3Content:
     "Nous utilisons vos données uniquement pour faire fonctionner l'application : vous authentifier, récupérer et afficher vos transactions, appliquer la catégorisation assistée par IA selon vos catégories et envoyer des alertes optionnelles (ex. Telegram, e-mail hebdomadaire) si vous les avez activées. Nous n'utilisons pas vos données pour le marketing et ne partageons ni ne vendons vos données personnelles ou financières à des tiers.",
@@ -139,10 +140,10 @@ export const translationsFr: Record<string, string> = {
     "Nous conservons vos données tant que votre compte est actif et pendant la durée nécessaire au service et aux obligations légales. Si vous fermez votre compte ou demandez la suppression, nous supprimerons ou anonymiserons vos données personnelles et de transactions conformément à nos procédures.",
   privacySection5Title: "5. Cookies et technologies similaires",
   privacySection5Content:
-    "Nous utilisons des cookies et un stockage local strictement nécessaires à la session et à l'authentification (ex. Auth0). Nous n'utilisons pas de cookies ou technologies similaires pour la publicité ou le suivi inter-sites. Vous pouvez gérer les cookies dans les paramètres de votre navigateur.",
+    "Nous utilisons des cookies et un stockage local strictement nécessaires à la session et à l'authentification. Nous n'utilisons pas de cookies ou technologies similaires pour la publicité ou le suivi inter-sites. Vous pouvez gérer les cookies dans les paramètres de votre navigateur.",
   privacySection6Title: "6. Services tiers",
   privacySection6Content:
-    "Nous utilisons Auth0 pour l'authentification et des prestataires d'open banking (ex. GoCardless/Nordigen) pour récupérer vos données bancaires avec votre consentement. Ces prestataires traitent les données selon leurs propres politiques. Nous ne transmettons pas vos données à d'autres tiers pour leur marketing ou d'autres fins.",
+    "Nous utilisons des prestataires d'authentification et d'open banking pour récupérer vos données bancaires avec votre consentement. Ces prestataires traitent les données selon leurs propres politiques. Nous ne transmettons pas vos données à d'autres tiers pour leur marketing ou d'autres fins.",
   privacySection7Title: "7. Vos droits",
   privacySection7Content:
     "Selon votre lieu de résidence (dont le RGPD si vous êtes dans l'Espace économique européen), vous pouvez avoir le droit d'accéder, rectifier, exporter ou supprimer vos données personnelles, de vous opposer ou limiter certains traitements et de saisir une autorité de contrôle. Pour exercer ces droits, contactez-nous aux coordonnées indiquées ci-dessous.",
@@ -276,6 +277,22 @@ export const translationsFr: Record<string, string> = {
   authorizedUserAsAuthorizedMessage: "Vous avez accès à ce compte en tant qu'utilisateur autorisé. Seul le propriétaire peut gérer les utilisateurs autorisés, le stockage et l'abonnement.",
   storageLockedSharedAccount: "Le stockage est fixé sur le cloud pour les comptes partagés.",
   subscriptionOwnerOnly: "Seul le propriétaire du compte peut gérer l'abonnement.",
+  automaticAccountsLabel: "Comptes automatiques",
+  automaticAccountsUsed: "utilisés",
+  automaticAccountsExtra: "supplémentaires",
+  automaticAccountsAddSlot: "Ajouter un compte",
+  automaticAccountsRemoveSlot: "Réduire un compte",
+  automaticAccountsOverLimitTooltip: "Vous avez plus de comptes automatiques que votre abonnement ne le permet. Ajoutez un emplacement supplémentaire ou supprimez un compte pour reprendre les mises à jour.",
+  perMonth: "mois",
+  accountLimitTitle: "Limite de comptes automatiques atteinte",
+  accountLimitBody: "Votre plan inclut 2 connexions bancaires automatiques. Chaque connexion supplémentaire coûte 0,75€/mois et est facturée sur votre abonnement existant.",
+  accountLimitSubscribeFirst: "Abonnez-vous pour débloquer plus de slots de comptes automatiques.",
+  accountLimitConfirm: "Ajouter un compte",
+  accountSlotAdded: "Slot ajouté. Vous pouvez maintenant connecter une autre banque.",
+  removeSlotTitle: "Réduire les comptes automatiques",
+  removeSlotWarningBody: "Vous aurez plus de comptes automatiques connectés que de slots disponibles. Jusqu'à ce que vous déconnectiez les comptes excédentaires, les mises à jour automatiques des transactions et des soldes s'arrêteront et vous ne pourrez plus ajouter de nouveaux comptes automatiques.",
+  removeSlotConfirm: "Confirmer",
+  removeSlotRemoved: "Slot de compte automatique supprimé.",
   authorizedUserRequestSent: "Demande envoyée. L'administrateur créera l'utilisateur; il sera lié automatiquement.",
   authorizedUserRequestAlreadyExists: "Une demande existe déjà pour cet email.",
   authorizedUserCannotAuthorizeExistingUser: "Cet email est déjà enregistré. Vous ne pouvez pas autoriser un utilisateur existant.",
@@ -321,6 +338,26 @@ export const translationsFr: Record<string, string> = {
   adminEditTelegram: "Modifier l'ID Telegram",
   adminTelegramModalTitle: "Modifier l'ID de Chat Telegram",
   adminTelegramSave: "Enregistrer",
+  adminResendSync: "Synchroniser avec Resend",
+  adminResendSyncing: "Synchronisation...",
+  adminResendSyncSuccess: "Synchronisé avec Resend",
+  adminResendSyncError: "Échec de la synchronisation Resend",
+  adminBroadcast: "Envoyer un email de masse",
+  adminBroadcastTitle: "Envoyer un email de masse",
+  adminBroadcastDesc: "Sélectionnez un modèle source. Il sera traduit automatiquement dans toutes les langues prises en charge et envoyé aux utilisateurs actifs avec des e-mails vérifiés.",
+  adminBroadcastSelectTemplate: "Sélectionner un modèle...",
+  adminBroadcastSend: "Envoyer",
+  adminBroadcastSending: "Envoi en cours...",
+  adminBroadcastSuccess: "Envoi effectué",
+  adminBroadcastError: "Échec de l'envoi",
+  adminBroadcastLoadingTemplates: "Chargement des modèles...",
+  adminBroadcastNoTemplates: "Aucun modèle publié trouvé dans Resend",
+  adminBroadcastStepTranslating: "Traduction dans toutes les langues",
+  adminBroadcastStepSending: "Envoi vers",
+  adminBroadcastStepCleanup: "Nettoyage des modèles temporaires",
+  adminBroadcastDetailSent: "envoyés",
+  adminBroadcastDetailErrors: "erreurs",
+  adminBroadcastDetailDeleted: "supprimés",
   dashboardWelcome: "Vue d’ensemble",
   dashboardAccountsTitle: "Comptes bancaires et cartes",
   dashboardAccountsBody: "Gérer les comptes pour synchroniser les transactions.",
@@ -397,6 +434,9 @@ export const translationsFr: Record<string, string> = {
   transactionUpdateError: "Échec de la mise à jour de la transaction.",
   confirmDeleteTransaction: "Supprimer la transaction ?",
   confirmDeleteTransactionWarning: "Cette transaction sera définitivement supprimée. Cette action est irréversible.",
+  transactionsSelectAll: "Tout sélectionner sur cette page",
+  confirmDeleteTransactions: "Supprimer les transactions sélectionnées ?",
+  confirmDeleteTransactionsWarning: "Les transactions sélectionnées seront définitivement supprimées. Cette action est irréversible.",
   bookingDate: "Date comptable",
   postingDate: "Date de comptabilisation",
   postingDateEarlier: "Plus tôt (date -1 jour)",
@@ -641,9 +681,10 @@ export const translationsFr: Record<string, string> = {
   notAuthorizedBody:
     "Cet utilisateur n’est pas encore autorisé. Contactez l’administrateur.",
   accessDeniedTitle: "Connexion non autorisée",
-  accessDeniedBody:
-    "Votre connexion a été refusée par la vérification d'accès de l'application. Si un administrateur vient de créer votre compte, la vérification peut interroger un autre serveur (ex. production). Demandez à l'administrateur de confirmer que votre compte existe dans cet environnement ou de pointer la allowlist vers celui-ci (ex. tunnel en développement local).",
+  accessDeniedBody: "Votre connexion a été refusée par la vérification d'accès de l'application.",
   accessDeniedTryAgain: "Retour à l'accueil",
+  reconnectCancelledMessage: "Reconnexion annulée. Votre compte reste connecté.",
+  bankSetupCancelledMessage: "Configuration du compte annulée.",
   serverErrorTitle: "Service temporairement indisponible",
   serverErrorBody:
     "Le serveur n'a pas pu être joint. Ce n'est pas un problème d'autorisation. Réessayez dans quelques minutes ou contactez l'administrateur si cela persiste.",
@@ -802,4 +843,57 @@ export const translationsFr: Record<string, string> = {
   userManagement: "Gestion des utilisateurs",
   settings: "Paramètres",
   audit: "Audit",
+  footerAbout: "À propos",
+  footerTerms: "CGU",
+  menuAboutUs: "À propos de nous",
+  menuTerms: "Conditions générales d'utilisation",
+  aboutTitle: "À propos de nous",
+  aboutBack: "Retour",
+  aboutLastUpdated: "Dernière mise à jour : février 2026",
+  aboutIntro:
+    "Nous sommes une petite startup basée au Portugal, avec une forte conviction en faveur de la propriété des données et du respect de la vie privée des utilisateurs. Nous croyons que l'accès facile à des informations financières personnelles consolidées permet aux individus de prendre des décisions plus éclairées et contribue à l'éducation financière et à la stabilité financière à moyen terme.",
+  aboutMissionTitle: "Notre mission",
+  aboutMissionContent:
+    "Notre mission est de rendre la gestion financière personnelle simple, transparente et accessible. Nous nous connectons à vos comptes bancaires via des fournisseurs d'open banking réglementés, vous permettant de voir toutes vos transactions et tous vos comptes en un seul endroit — sans jamais stocker vos identifiants.\n\nNous voulions créer un outil véritablement centré sur l'utilisateur : facile à utiliser, respectueux de la vie privée et réellement utile au quotidien.",
+  aboutPsd2Paragraph:
+    "La directive européenne sur les services de paiement (PSD2) a permis aux particuliers et aux entreprises de toute l'Union européenne d'accéder à leurs données de comptes bancaires de manière transparente et sécurisée. Cette réglementation permet à des applications comme eurodata.app d'offrir aux utilisateurs une véritable liberté financière, avec une sécurité totale et un contrôle complet sur leurs propres données.",
+  aboutPsd2LinkText: "En savoir plus sur la PSD2 sur le site de la Banque centrale européenne.",
+  aboutValuesTitle: "Nos valeurs",
+  aboutValuesContent:
+    "Nous sommes engagés en faveur de la transparence, de la simplicité et de l'équité. Nous développons des fonctionnalités qui aident vraiment nos utilisateurs, nous sommes honnêtes sur ce que nous pouvons et ne pouvons pas faire, et nous traitons les données personnelles avec le plus grand soin.\n\nNous pensons que les personnes doivent avoir un contrôle total sur leurs données financières. C'est pourquoi nous ne vendons, ne partageons ni ne monétisons jamais vos données.",
+  aboutContactTitle: "Nous contacter",
+  aboutContactIntro:
+    "Nous sommes une petite équipe et nous nous soucions profondément de nos utilisateurs. Si vous avez des questions, des commentaires ou des idées, nous serions ravis de vous entendre. Écrivez-nous à info@eurodata.app.",
+  termsTitle: "Conditions générales d'utilisation",
+  termsBack: "Retour",
+  termsLastUpdated: "Dernière mise à jour : février 2026",
+  termsIntro:
+    "Ces Conditions générales d'utilisation régissent votre utilisation d'eurodata.app (le « Service »). En accédant au Service ou en l'utilisant, vous acceptez d'être lié par ces conditions. Veuillez les lire attentivement avant d'utiliser le Service.",
+  termsSection1Title: "1. Acceptation des conditions",
+  termsSection1Content:
+    "En accédant à eurodata.app, vous confirmez avoir lu, compris et accepté ces Conditions générales. Si vous n'acceptez pas ces conditions, veuillez ne pas utiliser le Service.\n\nCes conditions s'appliquent à tous les utilisateurs du Service, y compris ceux qui y accèdent via des connexions d'open banking ou par tout autre moyen.",
+  termsSection2Title: "2. Description du service",
+  termsSection2Content:
+    "eurodata.app est un outil de gestion financière personnelle qui agrège et affiche des informations financières provenant de vos comptes bancaires et autres institutions financières. Le Service vous permet de consulter vos transactions, de catégoriser vos dépenses, de configurer des alertes et d'obtenir des informations sur votre activité financière.\n\nLe Service se connecte aux institutions financières via des fournisseurs tiers d'open banking réglementés avec votre consentement explicite. Nous ne stockons pas vos identifiants bancaires.",
+  termsSection3Title: "3. Avertissement sur l'exactitude des données",
+  termsSection3Content:
+    "Les informations financières affichées dans le Service proviennent directement de vos banques et institutions financières connectées via des fournisseurs d'open banking. Nous ne générons, ne créons ni ne vérifions indépendamment ces données.\n\nBien que nous prenions toutes les précautions pour présenter les informations de manière précise et utile, nous ne pouvons garantir l'exhaustivité, l'actualité ou l'exactitude des données fournies par vos institutions financières. Les erreurs, retards ou omissions dans les données transmises par les banques échappent à notre contrôle.\n\nVous ne devez pas vous fier exclusivement aux informations fournies par eurodata.app pour prendre des décisions financières. Vérifiez toujours les informations financières importantes directement auprès de votre banque. eurodata.app est un outil d'aide, non un substitut à un conseil financier professionnel.",
+  termsSection4Title: "4. Responsabilités de l'utilisateur",
+  termsSection4Content:
+    "Vous êtes responsable de la sécurité de votre compte et de toutes les activités qui s'y déroulent. Vous vous engagez à nous informer immédiatement de toute utilisation non autorisée de votre compte.\n\nVous vous engagez à utiliser le Service uniquement à des fins légales et conformément à ces Conditions. Vous ne pouvez pas utiliser le Service à des fins frauduleuses, abusives ou illégales.",
+  termsSection5Title: "5. Propriété intellectuelle",
+  termsSection5Content:
+    "Le Service et son contenu original, ses fonctionnalités et ses caractéristiques sont et resteront la propriété exclusive d'eurodata.app et de ses concédants. Le Service est protégé par le droit d'auteur, les marques déposées et d'autres lois applicables.\n\nVous ne pouvez pas copier, modifier, distribuer, vendre ou louer une partie quelconque du Service, ni faire de la rétro-ingénierie sur le logiciel, sauf avec notre autorisation écrite ou si la loi applicable le permet.",
+  termsSection6Title: "6. Limitation de responsabilité",
+  termsSection6Content:
+    "Dans toute la mesure permise par la loi applicable, eurodata.app et son équipe ne sauraient être tenus responsables des dommages indirects, accessoires, spéciaux, consécutifs ou punitifs, y compris la perte de données, de bénéfices ou les pertes financières découlant de l'utilisation du Service ou d'inexactitudes dans les données financières de fournisseurs tiers.\n\nNotre responsabilité totale pour toute réclamation découlant de l'utilisation du Service ne dépassera pas le montant que vous avez payé pour le Service au cours des douze mois précédant la réclamation, ou cent euros (€100), le montant le plus élevé étant retenu.",
+  termsSection7Title: "7. Confidentialité",
+  termsSection7Content:
+    "Votre utilisation du Service est également régie par notre Politique de confidentialité, qui est incorporée dans ces Conditions par référence. Veuillez consulter notre Politique de confidentialité pour comprendre comment nous collectons, utilisons et protégeons vos données personnelles.\n\nNous nous engageons à traiter vos données avec transparence et dans le respect de la législation applicable en matière de protection des données, y compris le RGPD, le cas échéant.",
+  termsSection8Title: "8. Modifications des conditions et droit applicable",
+  termsSection8Content:
+    "Nous nous réservons le droit de mettre à jour ou de modifier ces Conditions générales à tout moment. Nous vous informerons des changements importants en publiant les conditions mises à jour sur cette page. La poursuite de l'utilisation du Service après de tels changements vaut acceptation des nouvelles conditions.\n\nCes Conditions sont régies par le droit portugais. Tout litige lié à ces conditions ou à l'utilisation du Service relève de la compétence exclusive des tribunaux portugais.",
+  termsContactTitle: "Contact",
+  termsContactIntro:
+    "Si vous avez des questions concernant ces Conditions générales, veuillez nous contacter à info@eurodata.app.",
 };
