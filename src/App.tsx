@@ -16,6 +16,7 @@ const LazyOnboarding = lazy(() => import("./components/Onboarding"));
 const LazyPrivacyPolicy = lazy(() => import("./components/PrivacyPolicy"));
 const LazyAboutUs = lazy(() => import("./components/AboutUs"));
 const LazyTermsOfService = lazy(() => import("./components/TermsOfService"));
+const LazyHelp = lazy(() => import("./components/Help"));
 const LazyRecurringTransactions = lazy(() => import("./components/RecurringTransactions"));
 const LazySettings = lazy(() => import("./components/Settings"));
 import OnboardingWizard from "./components/OnboardingWizard";
@@ -224,6 +225,8 @@ function App() {
   const [languageOpen, setLanguageOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [userMenuLocked, setUserMenuLocked] = useState(false);
+  const [supportMenuOpen, setSupportMenuOpen] = useState(false);
+  const [supportHover, setSupportHover] = useState(false);
   const userMenuTimerRef = useRef<number | null>(null);
   const [aboutModalOpen, setAboutModalOpen] = useState(false);
   const [aboutVersion, setAboutVersion] = useState<string | null>(null);
@@ -233,7 +236,7 @@ function App() {
   const [signupRequestSuccess, setSignupRequestSuccess] = useState(false);
   const [signupRequestError, setSignupRequestError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<
-    "profile" | "users" | "settings" | "audit" | "adminDashboard" | "home" | "transactions" | "accounts" | "insights" | "recurring" | "privacy" | "about" | "terms"
+    "profile" | "users" | "settings" | "audit" | "adminDashboard" | "home" | "transactions" | "accounts" | "insights" | "recurring" | "privacy" | "about" | "terms" | "help"
   >("home");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showToTopButton, setShowToTopButton] = useState(false);
@@ -421,6 +424,49 @@ function App() {
   const formattedMonthlyTotal = subscriptionMonthlyTotal
     ? new Intl.NumberFormat(language.code || "en", { style: "currency", currency: subscriptionMonthlyTotal.currency, minimumFractionDigits: 2 }).format(subscriptionMonthlyTotal.unit_amount / 100)
     : null;
+  // Build pre-filled GitHub issue URLs including user email and app version.
+  const userEmail =
+    profile?.emails?.find((e) => e.is_primary)?.email ??
+    profile?.emails?.[0]?.email ??
+    null;
+  const buildIssueUrl = (type: "bug" | "feature"): string => {
+    const versionStr = aboutVersion ? `v${aboutVersion}` : "unknown";
+    const emailStr = userEmail ?? "unknown";
+    if (type === "bug") {
+      const body = [
+        `**User Email:** ${emailStr}`,
+        `**App Version:** ${versionStr}`,
+        "",
+        "----",
+        "",
+        "**Describe the bug:**",
+        "",
+        "**Steps to reproduce:**",
+        "1. ",
+        "2. ",
+        "",
+        "**Expected behavior:**",
+        "",
+        "**Actual behavior:**",
+      ].join("\n");
+      return `https://github.com/kal001/eurodata-public/issues/new?title=Bug+Report&body=${encodeURIComponent(body)}`;
+    } else {
+      const body = [
+        `**User Email:** ${emailStr}`,
+        `**App Version:** ${versionStr}`,
+        "",
+        "----",
+        "",
+        "**Problem to solve:**",
+        "",
+        "**Proposed solution:**",
+        "",
+        "**Additional context:**",
+      ].join("\n");
+      return `https://github.com/kal001/eurodata-public/issues/new?title=Feature+Request&labels=enhancement&body=${encodeURIComponent(body)}`;
+    }
+  };
+
   // True when the user has more connected automatic accounts than their subscription allows.
   // Fetch and balance buttons are disabled in this state to reflect the backend gate.
   const isOverAutoLimit =
@@ -883,6 +929,8 @@ function App() {
       setActiveSection("about");
     } else if (window.location.pathname === "/terms") {
       setActiveSection("terms");
+    } else if (window.location.pathname === "/help") {
+      setActiveSection("help");
     }
   }, []);
 
@@ -894,6 +942,8 @@ function App() {
         setActiveSection("about");
       } else if (window.location.pathname === "/terms") {
         setActiveSection("terms");
+      } else if (window.location.pathname === "/help") {
+        setActiveSection("help");
       } else if (window.location.pathname === "/" || window.location.pathname === "") {
         setActiveSection(isAuthenticated ? "transactions" : "home");
       }
@@ -936,12 +986,42 @@ function App() {
       window.history.replaceState({}, "", "/terms");
       return;
     }
+    if (section === "help") {
+      setActiveSection("help");
+      window.history.replaceState({}, "", "/help");
+      return;
+    }
     if (didChange) {
       const query = params.toString();
       const newUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
       window.history.replaceState({}, "", newUrl);
     }
   }, [isAuthenticated]);
+
+  // Fetch version on mount so it's available for GitHub issue URLs even if the About modal is never opened.
+  useEffect(() => {
+    let cancelled = false;
+    const versionUrl = apiBaseNorm ? `${apiBaseNorm}/api/version` : "/api/version";
+    fetch(versionUrl)
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error("Not ok"))))
+      .then((data) => {
+        if (!cancelled && data?.version) setAboutVersion(String(data.version).trim() || "—");
+      })
+      .catch(() => {
+        if (cancelled) return;
+        fetch("/version.txt")
+          .then((res) => (res.ok ? res.text() : Promise.reject(new Error("Not ok"))))
+          .then((text) => {
+            if (!cancelled) setAboutVersion((text ?? "").trim() || "—");
+          })
+          .catch(() => {
+            if (!cancelled) setAboutVersion("—");
+          });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [apiBaseNorm]);
 
   useEffect(() => {
     if (!aboutModalOpen) return;
@@ -3259,6 +3339,8 @@ function App() {
                 }
                 setUserMenuOpen(false);
                 setUserMenuLocked(false);
+                setSupportMenuOpen(false);
+                setSupportHover(false);
               }}
             >
             <button
@@ -3299,16 +3381,63 @@ function App() {
                   >
                     {t.menuLogin}
                   </button>
+                  <div
+                    onMouseEnter={() => setSupportHover(true)}
+                    onMouseLeave={() => setSupportHover(false)}
+                  >
+                    <button
+                      className="dropdown-item w-full text-left"
+                      type="button"
+                    >
+                      {t.menuSupport}
+                      <i className={`fa-solid fa-chevron-down text-xs transition-transform duration-200 ml-2 ${supportHover ? "rotate-180" : ""}`} aria-hidden />
+                    </button>
+                    {supportHover && (
+                      <>
+                        <a
+                          href={buildIssueUrl("bug")}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="dropdown-subitem"
+                          onClick={() => { setUserMenuOpen(false); setSupportHover(false); }}
+                        >
+                          {t.menuBugReport}
+                        </a>
+                        <a
+                          href={buildIssueUrl("feature")}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="dropdown-subitem"
+                          onClick={() => { setUserMenuOpen(false); setSupportHover(false); }}
+                        >
+                          {t.menuFeatureRequest}
+                        </a>
+                        <button
+                          type="button"
+                          className="dropdown-subitem"
+                          onClick={() => {
+                            setUserMenuOpen(false);
+                            setSupportHover(false);
+                            setActiveSection("help");
+                            window.history.pushState({}, "", "/help");
+                          }}
+                        >
+                          {t.menuHelp}
+                        </button>
+                      </>
+                    )}
+                  </div>
                   <button
                     className="dropdown-item w-full text-left"
                     type="button"
                     onClick={() => {
                       setUserMenuLocked(true);
                       setUserMenuOpen(false);
-                      setAboutModalOpen(true);
+                      setActiveSection("terms");
+                      window.history.pushState({}, "", "/terms");
                     }}
                   >
-                    {t.menuAbout}
+                    {t.menuTerms}
                   </button>
                   <button
                     className="dropdown-item w-full text-left"
@@ -3328,11 +3457,10 @@ function App() {
                     onClick={() => {
                       setUserMenuLocked(true);
                       setUserMenuOpen(false);
-                      setActiveSection("terms");
-                      window.history.pushState({}, "", "/terms");
+                      setAboutModalOpen(true);
                     }}
                   >
-                    {t.menuTerms}
+                    {t.menuAbout}
                   </button>
                 </>
                 ) : (
@@ -3414,16 +3542,63 @@ function App() {
                     ) : (
                       <div className="dropdown-separator" role="separator" />
                     )}
+                    <div
+                      onMouseEnter={() => setSupportHover(true)}
+                      onMouseLeave={() => setSupportHover(false)}
+                    >
+                      <button
+                        className="dropdown-item w-full text-left"
+                        type="button"
+                      >
+                        {t.menuSupport}
+                        <i className={`fa-solid fa-chevron-down text-xs transition-transform duration-200 ml-2 ${supportHover ? "rotate-180" : ""}`} aria-hidden />
+                      </button>
+                      {supportHover && (
+                        <>
+                          <a
+                            href={buildIssueUrl("bug")}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="dropdown-subitem"
+                            onClick={() => { setUserMenuOpen(false); setSupportHover(false); }}
+                          >
+                            {t.menuBugReport}
+                          </a>
+                          <a
+                            href={buildIssueUrl("feature")}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="dropdown-subitem"
+                            onClick={() => { setUserMenuOpen(false); setSupportHover(false); }}
+                          >
+                            {t.menuFeatureRequest}
+                          </a>
+                          <button
+                            type="button"
+                            className="dropdown-subitem"
+                            onClick={() => {
+                              setUserMenuOpen(false);
+                              setSupportHover(false);
+                              setActiveSection("help");
+                              window.history.pushState({}, "", "/help");
+                            }}
+                          >
+                            {t.menuHelp}
+                          </button>
+                        </>
+                      )}
+                    </div>
                     <button
                       className="dropdown-item w-full text-left"
                       type="button"
                       onClick={() => {
                         setUserMenuLocked(true);
                         setUserMenuOpen(false);
-                        setAboutModalOpen(true);
+                        setActiveSection("terms");
+                        window.history.pushState({}, "", "/terms");
                       }}
                     >
-                      {t.menuAbout}
+                      {t.menuTerms}
                     </button>
                     <button
                       className="dropdown-item w-full text-left"
@@ -3443,16 +3618,15 @@ function App() {
                       onClick={() => {
                         setUserMenuLocked(true);
                         setUserMenuOpen(false);
-                        setActiveSection("terms");
-                        window.history.pushState({}, "", "/terms");
+                        setAboutModalOpen(true);
                       }}
                     >
-                      {t.menuTerms}
+                      {t.menuAbout}
                     </button>
                     <button
                       className="dropdown-item w-full text-left"
                       type="button"
-                    onClick={() => void handleLogout()}
+                      onClick={() => void handleLogout()}
                     >
                       {t.menuLogout}
                     </button>
@@ -3538,15 +3712,59 @@ function App() {
                   <span>{t.menuLogin}</span>
                 </button>
                 <button
+                  onClick={() => setSupportMenuOpen((prev) => !prev)}
+                  className="mobile-nav-item"
+                  type="button"
+                >
+                  <i className="fa-solid fa-circle-question"></i>
+                  <span className="flex-1">{t.menuSupport}</span>
+                  <i className={`fa-solid fa-chevron-down text-xs transition-transform duration-200 ${supportMenuOpen ? "rotate-180" : ""}`} aria-hidden />
+                </button>
+                {supportMenuOpen && (
+                  <>
+                    <a
+                      href={buildIssueUrl("bug")}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mobile-nav-subitem"
+                      onClick={() => { setMobileMenuOpen(false); setSupportMenuOpen(false); }}
+                    >
+                      <span>{t.menuBugReport}</span>
+                    </a>
+                    <a
+                      href={buildIssueUrl("feature")}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mobile-nav-subitem"
+                      onClick={() => { setMobileMenuOpen(false); setSupportMenuOpen(false); }}
+                    >
+                      <span>{t.menuFeatureRequest}</span>
+                    </a>
+                    <button
+                      type="button"
+                      className="mobile-nav-subitem"
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        setSupportMenuOpen(false);
+                        setActiveSection("help");
+                        window.history.pushState({}, "", "/help");
+                      }}
+                    >
+                      <span>{t.menuHelp}</span>
+                    </button>
+                  </>
+                )}
+                <button
                   onClick={() => {
                     setMobileMenuOpen(false);
-                    setAboutModalOpen(true);
+                    setActiveSection("terms");
+                    window.history.pushState({}, "", "/terms");
                   }}
                   className="mobile-nav-item"
                   type="button"
                 >
-                  <i className="fa-solid fa-circle-info"></i>
-                  <span>{t.menuAbout}</span>
+                  <i className="fa-solid fa-file-contract"></i>
+                  <span>{t.menuTerms}</span>
                 </button>
                 <button
                   onClick={() => {
@@ -3563,14 +3781,13 @@ function App() {
                 <button
                   onClick={() => {
                     setMobileMenuOpen(false);
-                    setActiveSection("terms");
-                    window.history.pushState({}, "", "/terms");
+                    setAboutModalOpen(true);
                   }}
                   className="mobile-nav-item"
                   type="button"
                 >
-                  <i className="fa-solid fa-file-contract"></i>
-                  <span>{t.menuTerms}</span>
+                  <i className="fa-solid fa-circle-info"></i>
+                  <span>{t.menuAbout}</span>
                 </button>
               </>
             ) : (
@@ -3647,15 +3864,59 @@ function App() {
                 </button>
 
                 <button
+                  onClick={() => setSupportMenuOpen((prev) => !prev)}
+                  className="mobile-nav-item"
+                  type="button"
+                >
+                  <i className="fa-solid fa-circle-question"></i>
+                  <span className="flex-1">{t.menuSupport}</span>
+                  <i className={`fa-solid fa-chevron-down text-xs transition-transform duration-200 ${supportMenuOpen ? "rotate-180" : ""}`} aria-hidden />
+                </button>
+                {supportMenuOpen && (
+                  <>
+                    <a
+                      href={buildIssueUrl("bug")}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mobile-nav-subitem"
+                      onClick={() => { setMobileMenuOpen(false); setSupportMenuOpen(false); }}
+                    >
+                      <span>{t.menuBugReport}</span>
+                    </a>
+                    <a
+                      href={buildIssueUrl("feature")}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="mobile-nav-subitem"
+                      onClick={() => { setMobileMenuOpen(false); setSupportMenuOpen(false); }}
+                    >
+                      <span>{t.menuFeatureRequest}</span>
+                    </a>
+                    <button
+                      type="button"
+                      className="mobile-nav-subitem"
+                      onClick={() => {
+                        setMobileMenuOpen(false);
+                        setSupportMenuOpen(false);
+                        setActiveSection("help");
+                        window.history.pushState({}, "", "/help");
+                      }}
+                    >
+                      <span>{t.menuHelp}</span>
+                    </button>
+                  </>
+                )}
+                <button
                   onClick={() => {
                     setMobileMenuOpen(false);
-                    setAboutModalOpen(true);
+                    setActiveSection("terms");
+                    window.history.pushState({}, "", "/terms");
                   }}
                   className="mobile-nav-item"
                   type="button"
                 >
-                  <i className="fa-solid fa-circle-info"></i>
-                  <span>{t.menuAbout}</span>
+                  <i className="fa-solid fa-file-contract"></i>
+                  <span>{t.menuTerms}</span>
                 </button>
                 <button
                   onClick={() => {
@@ -3672,14 +3933,13 @@ function App() {
                 <button
                   onClick={() => {
                     setMobileMenuOpen(false);
-                    setActiveSection("terms");
-                    window.history.pushState({}, "", "/terms");
+                    setAboutModalOpen(true);
                   }}
                   className="mobile-nav-item"
                   type="button"
                 >
-                  <i className="fa-solid fa-file-contract"></i>
-                  <span>{t.menuTerms}</span>
+                  <i className="fa-solid fa-circle-info"></i>
+                  <span>{t.menuAbout}</span>
                 </button>
                 <button
                   onClick={() => {
@@ -5185,7 +5445,35 @@ function App() {
             />
           </Suspense>
         ) : null}
-        {activeSection !== "privacy" && activeSection !== "about" && activeSection !== "terms" && isAuthenticated && authError ? (
+        {activeSection === "help" ? (
+          <Suspense fallback={<SectionFallback />}>
+            <LazyHelp
+              onBack={() => {
+                window.history.pushState({}, "", "/");
+                setActiveSection(isAuthenticated ? "transactions" : "home");
+              }}
+              bugReportUrl={buildIssueUrl("bug")}
+              featureRequestUrl={buildIssueUrl("feature")}
+              t={{
+                helpTitle: t.helpTitle,
+                helpBack: t.helpBack,
+                helpIntro: t.helpIntro,
+                helpGettingStartedTitle: t.helpGettingStartedTitle,
+                helpGettingStartedContent: t.helpGettingStartedContent,
+                helpTransactionsTitle: t.helpTransactionsTitle,
+                helpTransactionsContent: t.helpTransactionsContent,
+                helpSubscriptionTitle: t.helpSubscriptionTitle,
+                helpSubscriptionContent: t.helpSubscriptionContent,
+                helpSupportTitle: t.helpSupportTitle,
+                helpSupportBody: t.helpSupportBody,
+                helpBugReportLink: t.helpBugReportLink,
+                helpFeatureLink: t.helpFeatureLink,
+                helpGithubLink: t.helpGithubLink,
+              }}
+            />
+          </Suspense>
+        ) : null}
+        {activeSection !== "privacy" && activeSection !== "about" && activeSection !== "terms" && activeSection !== "help" && isAuthenticated && authError ? (
           <section className="mx-auto max-w-3xl px-6 py-24">
             <div className="card">
               <h2 className="card-title">
@@ -8862,7 +9150,7 @@ function App() {
       )}
 
       {/* Floating "To top" - authenticated sections + public long pages (terms, about, privacy) */}
-      {showToTopButton && (isAuthenticated && !profile?.needs_onboarding || activeSection === "terms" || activeSection === "about" || activeSection === "privacy") && (
+      {showToTopButton && (isAuthenticated && !profile?.needs_onboarding || activeSection === "terms" || activeSection === "about" || activeSection === "privacy" || activeSection === "help") && (
         <button
           type="button"
           className="fixed bottom-6 right-6 p-3 rounded-full shadow-lg border z-30 transition-opacity"
