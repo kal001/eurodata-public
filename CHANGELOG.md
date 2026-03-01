@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on Keep a Changelog, and this project adheres to
 Semantic Versioning.
 
+## [2.5.0] - 2026-03-01
+
+- **Google Sheets export:** Export filtered transactions to Google Sheets as a new spreadsheet (optionally in a chosen Drive folder) or append to an existing spreadsheet. Optional Google Picker for folder and spreadsheet selection with navigation from root. Number format (decimal separator) to match Excel/Sheets locale; export includes posting/booking dates, account name and friendly name, include-in-totals, and comment. New tab shows a “please wait” page then opens the spreadsheet when ready.
+
 ## [2.4.0] - 2026-02-28
 
 - **Help:** Added in-app help documentation.

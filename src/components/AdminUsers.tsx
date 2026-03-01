@@ -85,6 +85,7 @@ type Translations = {
   adminBroadcastError: string;
   adminBroadcastLoadingTemplates: string;
   adminBroadcastNoTemplates: string;
+  adminBroadcastInvalidSourceLang: string;
   adminBroadcastStepTranslating: string;
   adminBroadcastStepSending: string;
   adminBroadcastStepCleanup: string;
@@ -328,10 +329,18 @@ export default function AdminUsers({ token, apiBase, t, showToast }: Props) {
     };
 
     try {
+      // If template name ends with _xx (2-letter code), send source_lang so backend/n8n know the original language.
+      const selectedTpl = templates.find((t) => t.id === selectedTemplateId);
+      const name = selectedTpl?.name ?? selectedTpl?.alias ?? "";
+      const langMatch = name.match(/_([a-z]{2})$/);
+      const sourceLang = langMatch ? langMatch[1] : undefined;
       const response = await fetch(`${apiBase}/api/admin/resend/broadcast`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ template_id: selectedTemplateId }),
+        body: JSON.stringify({
+          template_id: selectedTemplateId,
+          ...(sourceLang && { source_lang: sourceLang }),
+        }),
       });
 
       if (!response.body) {
@@ -391,12 +400,25 @@ export default function AdminUsers({ token, apiBase, t, showToast }: Props) {
                 if (showToast)
                   showToast(`${t.adminBroadcastSuccess} (${event.sent})`, "success");
               } else if (event.type === "error") {
+                const isInvalidSourceLang =
+                  event.message === "invalid_source_lang";
+                const errorMessage = isInvalidSourceLang
+                  ? t.adminBroadcastInvalidSourceLang
+                  : t.adminBroadcastError;
                 setBroadcastSteps((prev) =>
-                  prev.map((s) =>
-                    s.status === "active" ? { ...s, status: "error" as const } : s
-                  )
+                  prev.map((s) => {
+                    if (s.status !== "active") return s;
+                    return {
+                      ...s,
+                      status: "error" as const,
+                      ...(isInvalidSourceLang &&
+                        s.id === "translating" && {
+                          detail: t.adminBroadcastInvalidSourceLang,
+                        }),
+                    };
+                  })
                 );
-                if (showToast) showToast(t.adminBroadcastError, "error");
+                if (showToast) showToast(errorMessage, "error");
               }
             } catch {
               // Ignore malformed SSE lines.

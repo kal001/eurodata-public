@@ -145,7 +145,7 @@ const HELP_CONTENT: Record<
       { icon: "fa-solid fa-filter", labelKey: "helpTxFilterAll", descKey: "helpTxFilterAllDesc" },
       { icon: "fa-solid fa-tags", labelKey: "helpTxCategoryFilter", descKey: "helpTxCategoryFilterDesc" },
       { icon: "fa-solid fa-tag", labelKey: "helpTxTagFilter", descKey: "helpTxTagFilterDesc" },
-      { icon: "fa-solid fa-file-csv", labelKey: "helpTxExport", descKey: "helpTxExportDesc" },
+      { icon: "fa-solid fa-download", labelKey: "helpTxExport", descKey: "helpTxExportDesc" },
       { icon: "fa-solid fa-folder", labelKey: "helpTxCategorySelect", descKey: "helpTxCategorySelectDesc" },
       { icon: "fa-solid fa-bell", labelKey: "helpTxAlertIcon", descKey: "helpTxAlertIconDesc" },
       { icon: "fa-regular fa-comment", labelKey: "helpTxCommentIcon", descKey: "helpTxCommentIconDesc" },
@@ -602,6 +602,9 @@ function App() {
     selectedTagIds: number[];
     decimalSeparator: "period" | "comma";
     thousandsSeparator: "none" | "comma" | "period";
+    sheetsTarget: "new" | "existing";
+    sheetsFolderId: string;
+    sheetsSpreadsheetId: string;
   }>({
     open: false,
     dateMode: "all",
@@ -615,7 +618,16 @@ function App() {
     selectedTagIds: [],
     decimalSeparator: "period",
     thousandsSeparator: "none",
+    sheetsTarget: "new",
+    sheetsFolderId: "",
+    sheetsSpreadsheetId: "",
   });
+  const [sheetsFolders, setSheetsFolders] = useState<{ id: string; name: string }[]>([]);
+  const [sheetsSpreadsheets, setSheetsSpreadsheets] = useState<{ id: string; name: string; url: string }[]>([]);
+  const [sheetsListsLoading, setSheetsListsLoading] = useState(false);
+  const [exportToSheetsLoading, setExportToSheetsLoading] = useState(false);
+  const [pickerOpening, setPickerOpening] = useState(false);
+  const [runSheetsExportAfterLink, setRunSheetsExportAfterLink] = useState(false);
   const [transactionsAll, setTransactionsAll] = useState<
     {
       id: number;
@@ -970,6 +982,34 @@ function App() {
       params.delete("section");
       didChange = true;
     }
+    if (section === "transactions" && isAuthenticated) {
+      setActiveSection("transactions");
+      params.delete("section");
+      didChange = true;
+    }
+    const googleSheets = params.get("google_sheets");
+    if (googleSheets === "ok" && isAuthenticated) {
+      showToast(t.exportSheetsLinkSuccess ?? "Google account linked. You can export to Sheets now.", "success");
+      params.delete("google_sheets");
+      params.delete("error");
+      didChange = true;
+      setRunSheetsExportAfterLink(true);
+    }
+    if (googleSheets === "error" && isAuthenticated) {
+      const errCode = params.get("error") || "";
+      const errMessage =
+        errCode === "redirect_uri_mismatch"
+          ? t.exportSheetsErrorRedirectUri
+          : errCode === "invalid_grant"
+            ? t.exportSheetsErrorInvalidGrant
+            : errCode === "token_exchange_failed"
+              ? t.exportSheetsErrorTokenExchange
+              : errCode || "Google link failed.";
+      showToast(errMessage, "error");
+      params.delete("google_sheets");
+      params.delete("error");
+      didChange = true;
+    }
     // Redirect ?section=privacy/about/terms to their canonical URLs
     if (section === "privacy") {
       setActiveSection("privacy");
@@ -996,7 +1036,29 @@ function App() {
       const newUrl = query ? `${window.location.pathname}?${query}` : window.location.pathname;
       window.history.replaceState({}, "", newUrl);
     }
-  }, [isAuthenticated]);
+  }, [isAuthenticated, showToast, t.exportSheetsLinkSuccess]);
+
+  // After successful Google link (callback), run export with default filters and open the new sheet.
+  useEffect(() => {
+    if (!runSheetsExportAfterLink || !apiToken || !apiBase) return;
+    setRunSheetsExportAfterLink(false);
+    (async () => {
+      try {
+        const res = await fetch(`${apiBase}/api/integrations/google-sheets/export`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ target: "new", decimal_separator: exportModal.decimalSeparator }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.spreadsheet_url) window.open(data.spreadsheet_url, "_blank");
+          showToast(t.exportSheetsSuccess ?? "Exported to Google Sheets.", "success");
+        }
+      } catch {
+        // Non-fatal: user can export again from the modal
+      }
+    })();
+  }, [runSheetsExportAfterLink, apiToken, apiBase, showToast, t.exportSheetsSuccess]);
 
   // Fetch version on mount so it's available for GitHub issue URLs even if the About modal is never opened.
   useEffect(() => {
@@ -2251,6 +2313,39 @@ function App() {
     return () => document.documentElement.removeEventListener("keydown", onKeyDown, true);
   }, [accountNameModal.open, accountAlertsModal.open, accountAlertsDeleteRecurringId, apiTokenCreateModal, deleteAccountModal.open, exportModal.open, switchToLocalModalOpen, switchToCloudModalOpen, localEncryptModal]);
 
+  // Load folders and spreadsheets when export modal opens (for Google Sheets destination options)
+  useEffect(() => {
+    if (!exportModal.open || !apiToken || !apiBase) return;
+    let cancelled = false;
+    setSheetsListsLoading(true);
+    fetch(`${apiBase}/api/integrations/google-sheets/status`, { headers: { Authorization: `Bearer ${apiToken}` } })
+      .then((r) => (r.ok ? r.json() : { linked: false }))
+      .then((st) => {
+        if (cancelled || !st.linked) return;
+        return Promise.all([
+          fetch(`${apiBase}/api/integrations/google-sheets/folders`, { headers: { Authorization: `Bearer ${apiToken}` } }),
+          fetch(`${apiBase}/api/integrations/google-sheets/spreadsheets`, { headers: { Authorization: `Bearer ${apiToken}` } }),
+        ]);
+      })
+      .then((res) => {
+        if (cancelled || !res) return;
+        const [foldersRes, spreadsheetsRes] = res;
+        return Promise.all([foldersRes.json(), spreadsheetsRes.json()]);
+      })
+      .then((data) => {
+        if (cancelled || !data) return;
+        setSheetsFolders((data[0] as { folders: { id: string; name: string }[] }).folders || []);
+        setSheetsSpreadsheets((data[1] as { spreadsheets: { id: string; name: string; url: string }[] }).spreadsheets || []);
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setSheetsListsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [exportModal.open, apiToken, apiBase]);
+
   useEffect(() => {
     if (accountAlertsDeleteRecurringId == null) return;
     const raf = requestAnimationFrame(() => {
@@ -2740,6 +2835,245 @@ function App() {
     URL.revokeObjectURL(a.href);
     setExportModal((prev) => ({ ...prev, open: false }));
     showToast(t.exportSuccess, "success");
+  };
+
+  const openGoogleDrivePicker = useCallback(
+    async (mode: "folder" | "spreadsheet") => {
+      if (!apiToken || !apiBase) return;
+      setPickerOpening(true);
+      try {
+        const tokenRes = await fetch(`${apiBase}/api/integrations/google-sheets/picker-token`, {
+          headers: { Authorization: `Bearer ${apiToken}` },
+        });
+        if (!tokenRes.ok) {
+          showToast(t.exportSheetsError ?? "Could not get Picker token.", "error");
+          return;
+        }
+        const tokenData = (await tokenRes.json()) as {
+          access_token?: string;
+          app_id?: string;
+          developer_key?: string;
+        };
+        if (!tokenData.access_token || !tokenData.developer_key || !tokenData.app_id) {
+          showToast(
+            "Google Picker is not configured. Set GOOGLE_APPLICATION_ID and GOOGLE_API_KEY on the server.",
+            "error",
+          );
+          return;
+        }
+        const loadScript = (src: string): Promise<void> =>
+          new Promise((resolve, reject) => {
+            if (document.querySelector(`script[src="${src}"]`)) {
+              resolve();
+              return;
+            }
+            const script = document.createElement("script");
+            script.src = src;
+            script.async = true;
+            script.onload = () => resolve();
+            script.onerror = () => reject(new Error("Failed to load Google Picker script"));
+            document.head.appendChild(script);
+          });
+        await loadScript("https://apis.google.com/js/api.js");
+        const gapi = (window as { gapi?: { load: (name: string, cb: () => void) => void } }).gapi;
+        if (!gapi) {
+          showToast("Google Picker script failed to load.", "error");
+          return;
+        }
+        gapi.load("picker", () => {
+          const win = window as Window & {
+            google?: {
+              picker: {
+                DocsView: new (id: number) => {
+                  setIncludeFolders(v: boolean): unknown;
+                  setSelectFolderEnabled(v: boolean): unknown;
+                  setMimeTypes(t: string): unknown;
+                  setParent(parentId: string): unknown;
+                };
+                ViewId: { FOLDERS: number; DOCS: number };
+                PickerBuilder: new () => {
+                  setOAuthToken(t: string): unknown;
+                  setAppId(id: string): unknown;
+                  setDeveloperKey(k: string): unknown;
+                  addView(v: unknown): unknown;
+                  setCallback(cb: (data: { action: number; docs?: Array<{ id: string; name: string }> }) => void): unknown;
+                  build(): { setVisible(v: boolean): void };
+                };
+                Action: { PICKED: number };
+              };
+            };
+          };
+          const pickerApi = win.google?.picker;
+          if (!pickerApi) {
+            showToast("Google Picker not available.", "error");
+            return;
+          }
+          const token = tokenData.access_token;
+          const appId = tokenData.app_id;
+          const developerKey = tokenData.developer_key;
+          let view: InstanceType<typeof pickerApi.DocsView>;
+          if (mode === "folder") {
+            // Start at My Drive root, show only folders, and enable Select on a folder (not just navigate into it)
+            view = new pickerApi.DocsView(pickerApi.ViewId.FOLDERS)
+              .setParent("root")
+              .setSelectFolderEnabled(true)
+              .setMimeTypes("application/vnd.google-apps.folder");
+          } else {
+            // Start at root and include folders so user can navigate hierarchy to find a spreadsheet
+            view = new pickerApi.DocsView(pickerApi.ViewId.DOCS)
+              .setParent("root")
+              .setIncludeFolders(true)
+              .setMimeTypes("application/vnd.google-apps.spreadsheet");
+          }
+          const picker = new pickerApi.PickerBuilder()
+            .setOAuthToken(token)
+            .setAppId(appId)
+            .setDeveloperKey(developerKey)
+            .addView(view)
+            .setCallback((data: { action: number; docs?: Array<{ id?: string; name?: string }> }) => {
+              if (data.action !== pickerApi.Action.PICKED) return;
+                // Picker may return docs as data.docs or data[Response.DOCUMENTS]; each doc may use doc.id or doc[Document.ID]
+                const rawData = data as Record<string, unknown>;
+                const resp = (pickerApi as { Response?: { DOCUMENTS: number } }).Response;
+                const docs = (data.docs ?? (resp && rawData[resp.DOCUMENTS])) as Array<{ id?: string; name?: string }> | undefined;
+              const doc = Array.isArray(docs) && docs.length ? docs[0] : undefined;
+              if (!doc) return;
+              const docObj = doc as Record<string, unknown>;
+              const docEnum = (pickerApi as { Document?: { ID: number; NAME: number } }).Document;
+              const id = (doc.id ?? (docEnum && docObj[docEnum.ID])) as string | undefined;
+              const name = (doc.name ?? (docEnum && docObj[docEnum.NAME])) as string | undefined;
+              const idStr = id ?? "";
+              const nameStr = name ?? "";
+              if (mode === "folder") {
+                setSheetsFolders((prev) => {
+                  if (prev.some((f) => f.id === idStr)) return prev;
+                  return [...prev, { id: idStr, name: nameStr }];
+                });
+                setExportModal((prev) => ({ ...prev, sheetsFolderId: idStr }));
+              } else {
+                setSheetsSpreadsheets((prev) => {
+                  if (prev.some((s) => s.id === idStr)) return prev;
+                  return [...prev, { id: idStr, name: nameStr, url: "" }];
+                });
+                setExportModal((prev) => ({ ...prev, sheetsSpreadsheetId: idStr }));
+              }
+            })
+            .build();
+          picker.setVisible(true);
+        });
+      } catch (e) {
+        showToast((e as Error).message ?? "Could not open Google Picker.", "error");
+      } finally {
+        setPickerOpening(false);
+      }
+    },
+    [apiBase, apiToken, showToast, t.exportSheetsError],
+  );
+
+  const handleExportToGoogleSheets = async () => {
+    if (!apiToken) return;
+    // Build a "please wait" page so the new tab shows a message instead of blank (reduces users closing it by mistake)
+    const waitMessage =
+      t.exportSheetsWaitMessage ??
+      "Exporting to Google Sheets… This tab will open your spreadsheet in a few seconds. Please don't close it.";
+    const escaped = waitMessage
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;");
+    const waitHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Export</title><style>body{font-family:system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8fafc;color:#334155}.box{text-align:center;padding:2rem;max-width:24rem}.spinner{width:2.5rem;height:2.5rem;border:3px solid #e2e8f0;border-top-color:#2563eb;border-radius:50%;animation:spin 0.8s linear infinite;margin:0 auto 1.25rem}h2{margin:0 0 0.5rem;font-size:1.125rem}p{margin:0;font-size:0.9375rem;line-height:1.5;color:#64748b}@keyframes spin{to{transform:rotate(360deg)}}</style></head><body><div class="box"><div class="spinner" aria-hidden="true"></div><h2>Exporting…</h2><p>${escaped}</p></div></body></html>`;
+    // Open tab on user gesture (avoids popup blockers), then write wait page into it (data: URLs are often blocked in window.open)
+    const newTab = window.open("", "_blank");
+    if (newTab) {
+      try {
+        newTab.document.write(waitHtml);
+        newTab.document.close();
+      } catch {
+        // cross-origin or restricted; tab stays blank
+      }
+      showToast(t.exportSheetsToastWait ?? "Export started. The new tab will open your spreadsheet when ready.", "success");
+    }
+    setExportToSheetsLoading(true);
+    try {
+      const statusRes = await fetch(`${apiBase}/api/integrations/google-sheets/status`, {
+        headers: { Authorization: `Bearer ${apiToken}` },
+      });
+      if (!statusRes.ok) {
+        newTab?.close();
+        showToast(t.exportSheetsError ?? "Could not check Google Sheets link.", "error");
+        return;
+      }
+      const statusData = await statusRes.json();
+      if (!statusData.linked) {
+        newTab?.close();
+        const authRes = await fetch(`${apiBase}/api/integrations/google-sheets/auth-url`, {
+          headers: { Authorization: `Bearer ${apiToken}` },
+        });
+        if (!authRes.ok) {
+          const errData = await authRes.json().catch(() => ({}));
+          showToast(errData.detail ?? t.exportSheetsNotConfigured ?? "Google Sheets export is not configured.", "error");
+          return;
+        }
+        const { auth_url } = await authRes.json();
+        window.location.href = auth_url;
+        return;
+      }
+      const target = exportModal.sheetsTarget;
+      if (target === "existing" && !exportModal.sheetsSpreadsheetId) {
+        newTab?.close();
+        showToast(t.exportSheetsSelectSpreadsheet ?? "Please select a spreadsheet.", "error");
+        return;
+      }
+      const body: Record<string, string | undefined> = {
+        target,
+        decimal_separator: exportModal.decimalSeparator,
+      };
+      if (target === "new" && exportModal.sheetsFolderId) body.folder_id = exportModal.sheetsFolderId;
+      if (target === "existing") body.spreadsheet_id = exportModal.sheetsSpreadsheetId;
+      if (exportModal.dateMode === "range" && exportModal.dateFrom) body.date_from = exportModal.dateFrom;
+      if (exportModal.dateMode === "range" && exportModal.dateTo) body.date_to = exportModal.dateTo;
+      if (exportModal.accountMode === "selected" && exportModal.selectedAccountIds.length > 0) {
+        body.accounts = exportModal.selectedAccountIds.join(",");
+      }
+      if (exportModal.categoryMode === "empty") body.has_category = "no";
+      else if (exportModal.categoryMode === "selected" && exportModal.selectedCategoryIds.length > 0) {
+        body.categories = exportModal.selectedCategoryIds.join(",");
+      }
+      if (exportModal.tagMode === "selected" && exportModal.selectedTagIds.length > 0) {
+        body.tags = exportModal.selectedTagIds.join(",");
+      }
+      const exportRes = await fetch(`${apiBase}/api/integrations/google-sheets/export`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${apiToken}`, "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (exportRes.status === 403 && exportRes.headers.get("X-Error-Code") === "google_reauth_required") {
+        newTab?.close();
+        const authRes = await fetch(`${apiBase}/api/integrations/google-sheets/auth-url`, {
+          headers: { Authorization: `Bearer ${apiToken}` },
+        });
+        if (authRes.ok) {
+          const { auth_url } = await authRes.json();
+          window.location.href = auth_url;
+          return;
+        }
+      }
+      if (!exportRes.ok) {
+        newTab?.close();
+        showToast(t.exportSheetsError ?? "Could not export to Google Sheets.", "error");
+        return;
+      }
+      const data = await exportRes.json();
+      setExportModal((prev) => ({ ...prev, open: false }));
+      showToast(t.exportSheetsSuccess ?? "Exported to Google Sheets.", "success");
+      if (data.spreadsheet_url && newTab) {
+        newTab.location.href = data.spreadsheet_url;
+      } else if (data.spreadsheet_url) {
+        window.open(data.spreadsheet_url, "_blank");
+      }
+    } finally {
+      setExportToSheetsLoading(false);
+    }
   };
 
   const handleTransactionIncludeInTotals = async (txId: number, include: boolean) => {
@@ -5326,6 +5660,136 @@ function App() {
                 <i className="fa-solid fa-file-csv" />
               </button>
             </div>
+            <div className="mt-4 border-t border-slate-200 pt-4 dark:border-slate-600">
+              <div className="flex flex-wrap items-center gap-4">
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="exportSheetsTarget"
+                    checked={exportModal.sheetsTarget === "new"}
+                    onChange={() =>
+                      setExportModal((prev) => ({ ...prev, sheetsTarget: "new", sheetsSpreadsheetId: "" }))
+                    }
+                  />
+                  <span className="text-slate-700 dark:text-slate-200">{t.exportSheetsNew ?? "New spreadsheet"}</span>
+                </label>
+                <label className="flex items-center gap-2">
+                  <input
+                    type="radio"
+                    name="exportSheetsTarget"
+                    checked={exportModal.sheetsTarget === "existing"}
+                    onChange={() =>
+                      setExportModal((prev) => ({ ...prev, sheetsTarget: "existing", sheetsFolderId: "" }))
+                    }
+                  />
+                  <span className="text-slate-700 dark:text-slate-200">{t.exportSheetsExisting ?? "Existing spreadsheet"}</span>
+                </label>
+              </div>
+              {exportModal.sheetsTarget === "new" ? (
+                <div className="mt-3">
+                  <label className="block text-sm text-slate-600 dark:text-slate-300">{t.exportSheetsFolder ?? "Pasta"}</label>
+                  <div className="mt-1 flex gap-2">
+                    <select
+                      className="input flex-1"
+                      value={exportModal.sheetsFolderId}
+                      onChange={(e) =>
+                        setExportModal((prev) => ({ ...prev, sheetsFolderId: e.target.value }))
+                      }
+                      disabled={sheetsListsLoading}
+                    >
+                      {sheetsFolders.map((f) => (
+                        <option key={f.id || "root"} value={f.id}>
+                          {f.name}
+                        </option>
+                      ))}
+                      {!sheetsListsLoading && sheetsFolders.length === 0 ? (
+                        <option value="">{t.exportSheetsMyDrive ?? "My Drive (root)"}</option>
+                      ) : null}
+                    </select>
+                    <button
+                      type="button"
+                      className="btn secondary p-2"
+                      onClick={() => void openGoogleDrivePicker("folder")}
+                      disabled={sheetsListsLoading || pickerOpening}
+                      title={t.exportSheetsBrowse ?? "Browse…"}
+                      aria-label={t.exportSheetsBrowse ?? "Browse…"}
+                    >
+                      {pickerOpening ? (
+                        <i className="fa-solid fa-spinner fa-spin" aria-hidden />
+                      ) : (
+                        <i className="fa-solid fa-folder-open" aria-hidden />
+                      )}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-3">
+                  <label className="block text-sm text-slate-600 dark:text-slate-300">{t.exportSheetsSelectExisting ?? "Folha"}</label>
+                  <div className="mt-1 flex gap-2">
+                    <div
+                      className="input flex-1 flex items-center min-h-[2.25rem] text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50"
+                      aria-live="polite"
+                    >
+                      {exportModal.sheetsSpreadsheetId
+                        ? (sheetsSpreadsheets.find((s) => s.id === exportModal.sheetsSpreadsheetId)?.name ?? exportModal.sheetsSpreadsheetId)
+                        : (t.exportSheetsSelectOne ?? "— Select one —")}
+                    </div>
+                    <button
+                      type="button"
+                      className="btn secondary p-2"
+                      onClick={() => void openGoogleDrivePicker("spreadsheet")}
+                      disabled={sheetsListsLoading || pickerOpening}
+                      title={t.exportSheetsBrowse ?? "Browse…"}
+                      aria-label={t.exportSheetsBrowse ?? "Browse…"}
+                    >
+                      {pickerOpening ? (
+                        <i className="fa-solid fa-spinner fa-spin" aria-hidden />
+                      ) : (
+                        <i className="fa-solid fa-file-excel" aria-hidden />
+                      )}
+                    </button>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{t.exportSheetsExistingHelp ?? "Only new transactions are added; duplicates are skipped."}</p>
+                </div>
+              )}
+              <div className="mt-3 flex justify-end gap-2">
+                <button
+                  type="button"
+                  className="p-2 rounded-md border transition-colors"
+                  style={{
+                    background: "var(--surface-hover)",
+                    borderColor: "var(--border)",
+                    color: "var(--text)",
+                  }}
+                  title={t.exportCancel}
+                  aria-label={t.exportCancel}
+                  onClick={() =>
+                    setExportModal((prev) => ({ ...prev, open: false }))
+                  }
+                >
+                  <i className="fa-solid fa-xmark" />
+                </button>
+                <button
+                  type="button"
+                  className="p-2 rounded-md border transition-colors"
+                  style={{
+                    background: "var(--primary-50)",
+                    borderColor: "var(--primary)",
+                    color: "var(--primary)",
+                  }}
+                  title={t.exportToGoogleSheets ?? "Export to Google Sheets"}
+                  aria-label={t.exportToGoogleSheets ?? "Export to Google Sheets"}
+                  disabled={exportToSheetsLoading}
+                  onClick={() => void handleExportToGoogleSheets()}
+                >
+                  {exportToSheetsLoading ? (
+                    <i className="fa-solid fa-spinner fa-spin" aria-hidden />
+                  ) : (
+                    <i className="fa-brands fa-google" aria-hidden />
+                  )}
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       ) : null}
@@ -6263,10 +6727,10 @@ function App() {
                       selectedTagIds: prev.open ? prev.selectedTagIds : tags.map((t) => t.id),
                     }))
                   }
-                  title={t.exportDownload}
-                  aria-label={t.exportDownload}
+                  title={t.exportButton}
+                  aria-label={t.exportButton}
                 >
-                  <i className="fa-solid fa-file-csv text-sm" aria-hidden />
+                  <i className="fa-solid fa-download text-sm" aria-hidden />
                 </button>
               </div>
               <div className="mt-2 flex items-center justify-between text-xs text-slate-500 dark:text-slate-300">
@@ -8388,6 +8852,7 @@ function App() {
               adminBroadcastError: t.adminBroadcastError,
               adminBroadcastLoadingTemplates: t.adminBroadcastLoadingTemplates,
               adminBroadcastNoTemplates: t.adminBroadcastNoTemplates,
+              adminBroadcastInvalidSourceLang: t.adminBroadcastInvalidSourceLang,
               adminBroadcastStepTranslating: t.adminBroadcastStepTranslating,
               adminBroadcastStepSending: t.adminBroadcastStepSending,
               adminBroadcastStepCleanup: t.adminBroadcastStepCleanup,
