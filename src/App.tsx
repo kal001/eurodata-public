@@ -5454,16 +5454,13 @@ function App() {
               }}
               bugReportUrl={buildIssueUrl("bug")}
               featureRequestUrl={buildIssueUrl("feature")}
+              languageCode={language.code}
               t={{
                 helpPageTitle: t.helpPageTitle,
                 helpBack: t.helpBack,
                 helpIntro: t.helpIntro,
-                helpGettingStartedTitle: t.helpGettingStartedTitle,
-                helpGettingStartedContent: t.helpGettingStartedContent,
-                helpPageTransactionsTitle: t.helpPageTransactionsTitle,
-                helpTransactionsContent: t.helpTransactionsContent,
-                helpSubscriptionTitle: t.helpSubscriptionTitle,
-                helpSubscriptionContent: t.helpSubscriptionContent,
+                helpLoading: t.helpLoading,
+                helpLoadError: t.helpLoadError,
                 helpSupportTitle: t.helpSupportTitle,
                 helpSupportBody: t.helpSupportBody,
                 helpBugReportLink: t.helpBugReportLink,
@@ -8918,7 +8915,6 @@ function App() {
             >
               {t.footerTerms}
             </a>
-            <span className="whitespace-nowrap text-xs opacity-80">{t.footerMadeInPortugal}</span>
           </div>
           <div className="flex shrink-0 gap-4 pl-2">
             <a href="https://github.com/kal001/eurodata-public" target="_blank" rel="noopener noreferrer" aria-label={t.footerGithub} className="hover:text-blue-600">
