@@ -17,6 +17,7 @@ const LazyPrivacyPolicy = lazy(() => import("./components/PrivacyPolicy"));
 const LazyAboutUs = lazy(() => import("./components/AboutUs"));
 const LazyTermsOfService = lazy(() => import("./components/TermsOfService"));
 const LazyHelp = lazy(() => import("./components/Help"));
+const LazyPricing = lazy(() => import("./components/Pricing"));
 const LazyRecurringTransactions = lazy(() => import("./components/RecurringTransactions"));
 const LazySettings = lazy(() => import("./components/Settings"));
 import OnboardingWizard from "./components/OnboardingWizard";
@@ -236,7 +237,7 @@ function App() {
   const [signupRequestSuccess, setSignupRequestSuccess] = useState(false);
   const [signupRequestError, setSignupRequestError] = useState<string | null>(null);
   const [activeSection, setActiveSection] = useState<
-    "profile" | "users" | "settings" | "audit" | "adminDashboard" | "home" | "transactions" | "accounts" | "insights" | "recurring" | "privacy" | "about" | "terms" | "help"
+    "profile" | "users" | "settings" | "audit" | "adminDashboard" | "home" | "transactions" | "accounts" | "insights" | "recurring" | "privacy" | "about" | "terms" | "help" | "pricing"
   >("home");
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showToTopButton, setShowToTopButton] = useState(false);
@@ -943,6 +944,8 @@ function App() {
       setActiveSection("terms");
     } else if (window.location.pathname === "/help") {
       setActiveSection("help");
+    } else if (window.location.pathname === "/pricing") {
+      setActiveSection("pricing");
     }
   }, []);
 
@@ -956,6 +959,8 @@ function App() {
         setActiveSection("terms");
       } else if (window.location.pathname === "/help") {
         setActiveSection("help");
+      } else if (window.location.pathname === "/pricing") {
+        setActiveSection("pricing");
       } else if (window.location.pathname === "/" || window.location.pathname === "") {
         setActiveSection(isAuthenticated ? "transactions" : "home");
       }
@@ -1029,6 +1034,11 @@ function App() {
     if (section === "help") {
       setActiveSection("help");
       window.history.replaceState({}, "", "/help");
+      return;
+    }
+    if (section === "pricing") {
+      setActiveSection("pricing");
+      window.history.replaceState({}, "", "/pricing");
       return;
     }
     if (didChange) {
@@ -3615,6 +3625,19 @@ function App() {
             </nav>
           ) : null}
           <nav className="hidden items-center gap-8 md:flex">
+            {!isAuthenticated ? (
+              <a
+                href="/pricing"
+                onClick={(e) => {
+                  e.preventDefault();
+                  setActiveSection("pricing");
+                  window.history.pushState({}, "", "/pricing");
+                }}
+                className={`nav-item ${activeSection === "pricing" ? "active" : ""}`}
+              >
+                {t.navPricing}
+              </a>
+            ) : null}
             <div
               className="relative language-wrapper"
               onMouseEnter={() => setLanguageOpen(true)}
@@ -4044,6 +4067,18 @@ function App() {
                 >
                   <i className="fa-solid fa-right-to-bracket"></i>
                   <span>{t.menuLogin}</span>
+                </button>
+                <button
+                  onClick={() => {
+                    setMobileMenuOpen(false);
+                    setActiveSection("pricing");
+                    window.history.pushState({}, "", "/pricing");
+                  }}
+                  className="mobile-nav-item"
+                  type="button"
+                >
+                  <i className="fa-solid fa-tag" aria-hidden></i>
+                  <span>{t.navPricing}</span>
                 </button>
                 <button
                   onClick={() => setSupportMenuOpen((prev) => !prev)}
@@ -5934,7 +5969,86 @@ function App() {
             />
           </Suspense>
         ) : null}
-        {activeSection !== "privacy" && activeSection !== "about" && activeSection !== "terms" && activeSection !== "help" && isAuthenticated && authError ? (
+        {activeSection === "pricing" ? (
+          <Suspense fallback={<SectionFallback />}>
+            <LazyPricing
+              onBack={() => {
+                window.history.pushState({}, "", "/");
+                setActiveSection(isAuthenticated ? "transactions" : "home");
+              }}
+              onStartTrial={() => setRegisterModalOpen(true)}
+              t={{
+                pricingBack: t.pricingBack,
+                pricingHeroTitle: t.pricingHeroTitle,
+                pricingHeroSubtitle: t.pricingHeroSubtitle,
+                pricingPlanStandard: t.pricingPlanStandard,
+                pricingPlanExtraAccount: t.pricingPlanExtraAccount,
+                pricingVatIncluded: t.pricingVatIncluded,
+                pricingMostPopular: t.pricingMostPopular,
+                pricingStandardPrice: t.pricingStandardPrice,
+                pricingExtraPrice: t.pricingExtraPrice,
+                pricingStandardDescription: t.pricingStandardDescription,
+                pricingStandardInclude1: t.pricingStandardInclude1,
+                pricingStandardInclude2: t.pricingStandardInclude2,
+                pricingStandardInclude3: t.pricingStandardInclude3,
+                pricingExtraDescription: t.pricingExtraDescription,
+                pricingExtraNote: t.pricingExtraNote,
+                pricingCtaStartTrial: t.pricingCtaStartTrial,
+                pricingFootnote: t.pricingFootnote,
+                pricingFeaturesTitle: t.pricingFeaturesTitle,
+                pricingPremiumBadge: t.pricingPremiumBadge,
+                pricingFeatureCategoryUi: t.pricingFeatureCategoryUi,
+                pricingFeatureCategoryGeneral: t.pricingFeatureCategoryGeneral,
+                pricingFeatureCategoryTransactions: t.pricingFeatureCategoryTransactions,
+                pricingFeatureCategorySecurity: t.pricingFeatureCategorySecurity,
+                pricingFeatureResponsive: t.pricingFeatureResponsive,
+                pricingFeaturePwa: t.pricingFeaturePwa,
+                pricingFeatureLanguages: t.pricingFeatureLanguages,
+                pricingFeatureGoogleAuth: t.pricingFeatureGoogleAuth,
+                pricingFeatureMultiCurrency: t.pricingFeatureMultiCurrency,
+                pricingFeatureSharedAccounts: t.pricingFeatureSharedAccounts,
+                pricingFeatureAlertsChannels: t.pricingFeatureAlertsChannels,
+                pricingFeatureTelegramBot: t.pricingFeatureTelegramBot,
+                pricingFeatureApi: t.pricingFeatureApi,
+                pricingFeatureAutoImport: t.pricingFeatureAutoImport,
+                pricingFeaturePdfImport: t.pricingFeaturePdfImport,
+                pricingFeatureAutoCategory: t.pricingFeatureAutoCategory,
+                pricingFeatureCustomTags: t.pricingFeatureCustomTags,
+                pricingFeatureCustomCategories: t.pricingFeatureCustomCategories,
+                pricingFeatureAlertsTransactions: t.pricingFeatureAlertsTransactions,
+                pricingFeatureRecurringDetection: t.pricingFeatureRecurringDetection,
+                pricingFeatureCalendarView: t.pricingFeatureCalendarView,
+                pricingFeatureExportExcel: t.pricingFeatureExportExcel,
+                pricingFeatureBalanceForecast: t.pricingFeatureBalanceForecast,
+                pricingFeatureDataEncrypted: t.pricingFeatureDataEncrypted,
+                pricingFeatureNeverSell: t.pricingFeatureNeverSell,
+                pricingFeatureCredentialsNeverStored: t.pricingFeatureCredentialsNeverStored,
+                pricingFeatureAuthExpire90: t.pricingFeatureAuthExpire90,
+                pricingFeatureIso27001: t.pricingFeatureIso27001,
+                pricingFeatureServersGermany: t.pricingFeatureServersGermany,
+                pricingFeatureStorageChoice: t.pricingFeatureStorageChoice,
+                pricingFeatureAiLocal: t.pricingFeatureAiLocal,
+                pricingFaqTitle: t.pricingFaqTitle,
+                pricingFaq1Q: t.pricingFaq1Q,
+                pricingFaq1A: t.pricingFaq1A,
+                pricingFaq2Q: t.pricingFaq2Q,
+                pricingFaq2A: t.pricingFaq2A,
+                pricingFaq3Q: t.pricingFaq3Q,
+                pricingFaq3A: t.pricingFaq3A,
+                pricingFaq4Q: t.pricingFaq4Q,
+                pricingFaq4A: t.pricingFaq4A,
+                pricingFaq5Q: t.pricingFaq5Q,
+                pricingFaq5A: t.pricingFaq5A,
+                pricingCtaTitle: t.pricingCtaTitle,
+                pricingCtaSubtext: t.pricingCtaSubtext,
+                pricingCtaButton: t.pricingCtaButton,
+                pricingMetaTitle: t.pricingMetaTitle,
+                pricingMetaDescription: t.pricingMetaDescription,
+              }}
+            />
+          </Suspense>
+        ) : null}
+        {activeSection !== "privacy" && activeSection !== "about" && activeSection !== "terms" && activeSection !== "help" && activeSection !== "pricing" && isAuthenticated && authError ? (
           <section className="mx-auto max-w-3xl px-6 py-24">
             <div className="card">
               <h2 className="card-title">
@@ -8866,7 +8980,7 @@ function App() {
 
         {activeSection === "home" && !isAuthenticated ? (
           <section className="mx-auto min-w-0 max-w-6xl px-6 pt-16 pb-4">
-          <div className="grid min-w-0 grid-cols-1 gap-10 lg:grid-cols-2 lg:items-center">
+          <div className="grid min-w-0 grid-cols-1 gap-10 lg:grid-cols-[1fr_minmax(0,26rem)] lg:items-center">
             <div className="min-w-0">
               <p className="text-sm font-semibold uppercase tracking-wide text-blue-600">
                 {t.heroEyebrow}
@@ -8908,11 +9022,15 @@ function App() {
                   <span>{t.heroAlerts}</span>
                 </p>
               </div>
-              <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:gap-6">
+              <div className="mt-8 flex flex-wrap items-center gap-2">
                 <button
-                  className="btn-primary"
                   type="button"
                   onClick={() => setRegisterModalOpen(true)}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-md border-2 border-transparent px-4 py-2 text-sm font-semibold transition-all focus:outline-none focus:ring-2 focus:ring-offset-2 shrink-0"
+                  style={{
+                    background: "var(--primary)",
+                    color: "#fff",
+                  }}
                 >
                   {t.heroPrimaryCta}
                 </button>
@@ -8923,9 +9041,14 @@ function App() {
                     setActiveSection("privacy");
                     window.history.pushState({}, "", "/privacy");
                   }}
-                  className="text-sm text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-md border-2 px-4 py-2 text-sm font-semibold transition-all shrink-0"
+                  style={{
+                    borderColor: "var(--primary)",
+                    color: "var(--primary)",
+                    background: "transparent",
+                  }}
                 >
-                  {t.footerPrivacy}
+                  {t.footerPrivacyShort}
                 </a>
                 <a
                   href="/about"
@@ -8934,7 +9057,12 @@ function App() {
                     setActiveSection("about");
                     window.history.pushState({}, "", "/about");
                   }}
-                  className="text-sm text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-md border-2 px-4 py-2 text-sm font-semibold transition-all shrink-0"
+                  style={{
+                    borderColor: "var(--primary)",
+                    color: "var(--primary)",
+                    background: "transparent",
+                  }}
                 >
                   {t.footerAbout}
                 </a>
@@ -8945,15 +9073,37 @@ function App() {
                     setActiveSection("terms");
                     window.history.pushState({}, "", "/terms");
                   }}
-                  className="text-sm text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400"
+                  className="inline-flex items-center justify-center gap-1.5 rounded-md border-2 px-4 py-2 text-sm font-semibold transition-all shrink-0"
+                  style={{
+                    borderColor: "var(--primary)",
+                    color: "var(--primary)",
+                    background: "transparent",
+                  }}
                 >
                   {t.footerTerms}
+                </a>
+                <a
+                  href="/pricing"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    setActiveSection("pricing");
+                    window.history.pushState({}, "", "/pricing");
+                  }}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-md border-2 px-4 py-2 text-sm font-semibold transition-all shrink-0"
+                  style={{
+                    borderColor: "var(--primary)",
+                    color: "var(--primary)",
+                    background: "transparent",
+                  }}
+                >
+                  <i className="fa-solid fa-tag text-xs" aria-hidden />
+                  {t.footerPricing}
                 </a>
               </div>
             </div>
             <div className="relative min-w-0 flex justify-center lg:justify-end">
               <div
-                className="w-full max-w-full overflow-hidden rounded-2xl border shadow-2xl transition-shadow duration-300 hover:shadow-xl sm:max-w-xl"
+                className="w-full max-w-full overflow-hidden rounded-2xl border shadow-2xl transition-shadow duration-300 hover:shadow-xl sm:max-w-md lg:max-w-full"
                 style={{
                   borderColor: "var(--border)",
                   boxShadow: "0 25px 50px -12px rgba(0, 0, 0, 0.25), 0 0 0 1px var(--border)",
@@ -9380,6 +9530,17 @@ function App() {
             >
               {t.footerTerms}
             </a>
+            <a
+              href="/pricing"
+              onClick={(e) => {
+                e.preventDefault();
+                setActiveSection("pricing");
+                window.history.pushState({}, "", "/pricing");
+              }}
+              className="whitespace-nowrap hover:text-blue-600 dark:hover:text-blue-400"
+            >
+              {t.footerPricing}
+            </a>
           </div>
           <div className="flex shrink-0 gap-4 pl-2">
             <a href="https://github.com/kal001/eurodata-public" target="_blank" rel="noopener noreferrer" aria-label={t.footerGithub} className="hover:text-blue-600">
@@ -9611,7 +9772,7 @@ function App() {
       )}
 
       {/* Floating "To top" - authenticated sections + public long pages (terms, about, privacy) */}
-      {showToTopButton && (isAuthenticated && !profile?.needs_onboarding || activeSection === "terms" || activeSection === "about" || activeSection === "privacy" || activeSection === "help") && (
+      {showToTopButton && (isAuthenticated && !profile?.needs_onboarding || activeSection === "terms" || activeSection === "about" || activeSection === "privacy" || activeSection === "help" || activeSection === "pricing") && (
         <button
           type="button"
           className="fixed bottom-6 right-6 p-3 rounded-full shadow-lg border z-30 transition-opacity"
