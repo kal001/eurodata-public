@@ -127,6 +127,8 @@ const auth0Locales: Record<string, string> = {
   pl: "pl",
 };
 
+const EXPORT_PREFS_KEY = "pf_export_prefs";
+
 type HelpContextId = "transactions" | "accounts" | "insights" | "profile" | "profileTelegramCommands";
 
 const HELP_CONTENT: Record<
@@ -590,6 +592,23 @@ function App() {
     connectionId: number | null;
     label: string;
   }>({ open: false, connectionId: null, label: "" });
+  const defaultExportModal = {
+    open: false,
+    dateMode: "all" as const,
+    dateFrom: "",
+    dateTo: "",
+    accountMode: "all" as const,
+    selectedAccountIds: [] as number[],
+    categoryMode: "all" as const,
+    selectedCategoryIds: [] as number[],
+    tagMode: "all" as const,
+    selectedTagIds: [] as number[],
+    decimalSeparator: "period" as const,
+    thousandsSeparator: "none" as const,
+    sheetsTarget: "new" as const,
+    sheetsFolderId: "",
+    sheetsSpreadsheetId: "",
+  };
   const [exportModal, setExportModal] = useState<{
     open: boolean;
     dateMode: "all" | "range";
@@ -606,25 +625,53 @@ function App() {
     sheetsTarget: "new" | "existing";
     sheetsFolderId: string;
     sheetsSpreadsheetId: string;
-  }>({
-    open: false,
-    dateMode: "all",
-    dateFrom: "",
-    dateTo: "",
-    accountMode: "all",
-    selectedAccountIds: [],
-    categoryMode: "all",
-    selectedCategoryIds: [],
-    tagMode: "all",
-    selectedTagIds: [],
-    decimalSeparator: "period",
-    thousandsSeparator: "none",
-    sheetsTarget: "new",
-    sheetsFolderId: "",
-    sheetsSpreadsheetId: "",
+  }>(() => {
+    try {
+      const raw = window.localStorage.getItem(EXPORT_PREFS_KEY);
+      if (!raw) return defaultExportModal;
+      const p = JSON.parse(raw) as Record<string, unknown>;
+      return {
+        ...defaultExportModal,
+        decimalSeparator: p.decimalSeparator === "comma" ? "comma" : defaultExportModal.decimalSeparator,
+        thousandsSeparator:
+          p.thousandsSeparator === "comma" || p.thousandsSeparator === "period"
+            ? p.thousandsSeparator
+            : defaultExportModal.thousandsSeparator,
+        sheetsTarget: p.sheetsTarget === "existing" ? "existing" : defaultExportModal.sheetsTarget,
+        sheetsFolderId: typeof p.sheetsFolderId === "string" ? p.sheetsFolderId : "",
+        sheetsSpreadsheetId: typeof p.sheetsSpreadsheetId === "string" ? p.sheetsSpreadsheetId : "",
+      };
+    } catch {
+      return defaultExportModal;
+    }
   });
-  const [sheetsFolders, setSheetsFolders] = useState<{ id: string; name: string }[]>([]);
-  const [sheetsSpreadsheets, setSheetsSpreadsheets] = useState<{ id: string; name: string; url: string }[]>([]);
+  const [sheetsFolders, setSheetsFolders] = useState<{ id: string; name: string }[]>(() => {
+    try {
+      const raw = window.localStorage.getItem(EXPORT_PREFS_KEY);
+      if (!raw) return [];
+      const p = JSON.parse(raw) as Record<string, unknown>;
+      const id = typeof p.sheetsFolderId === "string" ? p.sheetsFolderId : "";
+      const name = typeof p.sheetsFolderName === "string" ? p.sheetsFolderName : "";
+      if (id) return [{ id, name: name || id }];
+    } catch {
+      // ignore
+    }
+    return [];
+  });
+  const [sheetsSpreadsheets, setSheetsSpreadsheets] = useState<{ id: string; name: string; url: string }[]>(() => {
+    try {
+      const raw = window.localStorage.getItem(EXPORT_PREFS_KEY);
+      if (!raw) return [];
+      const p = JSON.parse(raw) as Record<string, unknown>;
+      const id = typeof p.sheetsSpreadsheetId === "string" ? p.sheetsSpreadsheetId : "";
+      const name = typeof p.sheetsSpreadsheetName === "string" ? p.sheetsSpreadsheetName : "";
+      const url = typeof p.sheetsSpreadsheetUrl === "string" ? p.sheetsSpreadsheetUrl : "";
+      if (id) return [{ id, name: name || id, url }];
+    } catch {
+      // ignore
+    }
+    return [];
+  });
   const [sheetsListsLoading, setSheetsListsLoading] = useState(false);
   const [exportToSheetsLoading, setExportToSheetsLoading] = useState(false);
   const [pickerOpening, setPickerOpening] = useState(false);
@@ -968,6 +1015,34 @@ function App() {
     window.addEventListener("popstate", onPopState);
     return () => window.removeEventListener("popstate", onPopState);
   }, [isAuthenticated]);
+
+  // ESC key: from /privacy, /about, /terms, /pricing go back to previous screen or landing
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      const section = activeSection;
+      if (section !== "privacy" && section !== "about" && section !== "terms" && section !== "pricing") return;
+      window.history.pushState({}, "", "/");
+      setActiveSection(isAuthenticated ? "transactions" : "home");
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [activeSection, isAuthenticated]);
+
+  // ESC key: close "Solicitar acesso" (request access) modal
+  useEffect(() => {
+    if (!registerModalOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      if (signupRequestSubmitting) return;
+      setRegisterModalOpen(false);
+      setSignupRequestSuccess(false);
+      setSignupRequestError(null);
+      setSignupRequestEmail("");
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [registerModalOpen, signupRequestSubmitting]);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -2323,7 +2398,7 @@ function App() {
     return () => document.documentElement.removeEventListener("keydown", onKeyDown, true);
   }, [accountNameModal.open, accountAlertsModal.open, accountAlertsDeleteRecurringId, apiTokenCreateModal, deleteAccountModal.open, exportModal.open, switchToLocalModalOpen, switchToCloudModalOpen, localEncryptModal]);
 
-  // Load folders and spreadsheets when export modal opens (for Google Sheets destination options)
+  // Load spreadsheets when export modal opens (for Google Sheets "Existing spreadsheet" option). Folder is chosen only via picker.
   useEffect(() => {
     if (!exportModal.open || !apiToken || !apiBase) return;
     let cancelled = false;
@@ -2332,20 +2407,20 @@ function App() {
       .then((r) => (r.ok ? r.json() : { linked: false }))
       .then((st) => {
         if (cancelled || !st.linked) return;
-        return Promise.all([
-          fetch(`${apiBase}/api/integrations/google-sheets/folders`, { headers: { Authorization: `Bearer ${apiToken}` } }),
-          fetch(`${apiBase}/api/integrations/google-sheets/spreadsheets`, { headers: { Authorization: `Bearer ${apiToken}` } }),
-        ]);
+        return fetch(`${apiBase}/api/integrations/google-sheets/spreadsheets`, { headers: { Authorization: `Bearer ${apiToken}` } });
       })
       .then((res) => {
-        if (cancelled || !res) return;
-        const [foldersRes, spreadsheetsRes] = res;
-        return Promise.all([foldersRes.json(), spreadsheetsRes.json()]);
+        if (cancelled || !res) return undefined;
+        return res.json();
       })
-      .then((data) => {
+      .then((data: { spreadsheets: { id: string; name: string; url: string }[] } | undefined) => {
         if (cancelled || !data) return;
-        setSheetsFolders((data[0] as { folders: { id: string; name: string }[] }).folders || []);
-        setSheetsSpreadsheets((data[1] as { spreadsheets: { id: string; name: string; url: string }[] }).spreadsheets || []);
+        const fromApi = data.spreadsheets || [];
+        setSheetsSpreadsheets((prev) => {
+          const idsFromApi = new Set(fromApi.map((s) => s.id));
+          const kept = prev.filter((s) => !idsFromApi.has(s.id));
+          return [...fromApi, ...kept];
+        });
       })
       .catch(() => {})
       .finally(() => {
@@ -2355,6 +2430,39 @@ function App() {
       cancelled = true;
     };
   }, [exportModal.open, apiToken, apiBase]);
+
+  // Persist export modal prefs (decimal/thousands separator, folder/spreadsheet choice) to localStorage
+  useEffect(() => {
+    try {
+      const folder = exportModal.sheetsFolderId
+        ? sheetsFolders.find((f) => f.id === exportModal.sheetsFolderId)
+        : null;
+      const spreadsheet = exportModal.sheetsSpreadsheetId
+        ? sheetsSpreadsheets.find((s) => s.id === exportModal.sheetsSpreadsheetId)
+        : null;
+      const prefs = {
+        decimalSeparator: exportModal.decimalSeparator,
+        thousandsSeparator: exportModal.thousandsSeparator,
+        sheetsTarget: exportModal.sheetsTarget,
+        sheetsFolderId: exportModal.sheetsFolderId,
+        sheetsFolderName: folder?.name ?? "",
+        sheetsSpreadsheetId: exportModal.sheetsSpreadsheetId,
+        sheetsSpreadsheetName: spreadsheet?.name ?? "",
+        sheetsSpreadsheetUrl: spreadsheet?.url ?? "",
+      };
+      window.localStorage.setItem(EXPORT_PREFS_KEY, JSON.stringify(prefs));
+    } catch {
+      // ignore
+    }
+  }, [
+    exportModal.decimalSeparator,
+    exportModal.thousandsSeparator,
+    exportModal.sheetsTarget,
+    exportModal.sheetsFolderId,
+    exportModal.sheetsSpreadsheetId,
+    sheetsFolders,
+    sheetsSpreadsheets,
+  ]);
 
   useEffect(() => {
     if (accountAlertsDeleteRecurringId == null) return;
@@ -5724,28 +5832,19 @@ function App() {
                 <div className="mt-3">
                   <label className="block text-sm text-slate-600 dark:text-slate-300">{t.exportSheetsFolder ?? "Pasta"}</label>
                   <div className="mt-1 flex gap-2">
-                    <select
-                      className="input flex-1"
-                      value={exportModal.sheetsFolderId}
-                      onChange={(e) =>
-                        setExportModal((prev) => ({ ...prev, sheetsFolderId: e.target.value }))
-                      }
-                      disabled={sheetsListsLoading}
+                    <div
+                      className="input flex-1 flex items-center min-h-[2.25rem] text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/50"
+                      aria-live="polite"
                     >
-                      {sheetsFolders.map((f) => (
-                        <option key={f.id || "root"} value={f.id}>
-                          {f.name}
-                        </option>
-                      ))}
-                      {!sheetsListsLoading && sheetsFolders.length === 0 ? (
-                        <option value="">{t.exportSheetsMyDrive ?? "My Drive (root)"}</option>
-                      ) : null}
-                    </select>
+                      {exportModal.sheetsFolderId
+                        ? (sheetsFolders.find((f) => f.id === exportModal.sheetsFolderId)?.name ?? exportModal.sheetsFolderId)
+                        : (t.exportSheetsMyDrive ?? "My Drive (root)")}
+                    </div>
                     <button
                       type="button"
                       className="btn secondary p-2"
                       onClick={() => void openGoogleDrivePicker("folder")}
-                      disabled={sheetsListsLoading || pickerOpening}
+                      disabled={pickerOpening}
                       title={t.exportSheetsBrowse ?? "Browse…"}
                       aria-label={t.exportSheetsBrowse ?? "Browse…"}
                     >
